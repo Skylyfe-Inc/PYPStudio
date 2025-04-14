@@ -31,7 +31,7 @@ const Home = () => {
         <motion.div className="home" {...slideAnimation("left")}>
           <motion.header {...slideAnimation("down")}>
             <img
-              src="/public/public/placedaprintwhitetee.png"
+              src="../../public/public/placedaprintwhitetee.png"
               alt="logo"
               className="w-30 h-20 object-contain"
             />
