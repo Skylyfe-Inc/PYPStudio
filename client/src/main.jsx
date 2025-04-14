@@ -7,7 +7,7 @@ import { BrowserRouter } from "react-router-dom";
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     {/* Using browser router as an outer layer which is mandatory for the routing setup. */}
-    <BrowserRouter future={{
+    <BrowserRouter basename={import.meta.env.VITE_BASE_PATH || "/PlaceYourPrintStudio"} future={{
     v7_relativeSplatPath: true,
   }}>
       <App />
