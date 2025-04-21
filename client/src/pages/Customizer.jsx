@@ -6,6 +6,8 @@ import { useSnapshot } from "valtio";
 import state from "../store";
 // import { download } from "../assets/assets";
 import { reader } from "../config/config/helpers";
+import cartIcon from '../../public/public/cart.png';
+
 import {
   EditorTabs,
   FilterTabs,
@@ -30,6 +32,7 @@ const Customizer = () => {
   //Set Image Generation
   const [file, setFile] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [count, setCount] = useState(0);
   const [generatingImg, setGeneratingImg] = useState(false);
   //Set Editor Tab & Filter Tab
   const [activeEditorTab, setActiveEditorTab] = useState("");
@@ -193,7 +196,13 @@ const Customizer = () => {
       setActiveEditorTab("");
     });
   };
-
+  const handleAddCartClick = () => {
+    setCount(prevCount => {
+      const newCount = prevCount + 1;
+      console.log("Add to Cart", newCount);
+      return newCount;
+    });
+  };
   return (
     <AnimatePresence>
       {!snap.intro && (
@@ -216,6 +225,22 @@ const Customizer = () => {
               </div>
             </div>
           </motion.div>
+          <div className="fixed top-5 right-40 flex space-x-4">
+  <CustomButton
+    type="filled"
+    title="Cart"
+    customStyles="py-2 px-4 font-bold text-sm"
+    src={cartIcon}
+    alt="logo"
+  />
+  <CustomButton
+    type="filled"
+    
+    title={`${count}`}
+    customStyles="py-2 px-4 font-bold text-sm"
+    
+  />
+</div>
           <motion.div
             className="absolute z-10 top-5 right-5"
             {...fadeAnimation}
@@ -226,7 +251,16 @@ const Customizer = () => {
               handleClick={handleBackNavigation}
               customStyles="w=fit px-4 py-2.5 font-bold text-sm"
             />
+            
+
           </motion.div>
+          <CustomButton
+            type="filled"
+            title="Add to Cart"
+            handleAddCartClick={() => console.log("Add to Cart ")}
+           customStyles="py-2 px-4 font-bold text-sm fixed bottom-5 right-40 bg-blue-600 text-white z-50"
+            handleClick={handleAddCartClick}
+          />
           <CustomButton
             type="filled"
             title="Download"

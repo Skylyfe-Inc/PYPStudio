@@ -2,6 +2,7 @@ import {
   swatch,
   fileIcon,
   ai,
+  cart,
   logoShirt,
   stylishShirt,
   shirtIcon3D,
@@ -27,6 +28,12 @@ export const CarouselTabs = [
   {
     name: "sneaker",
     icon: sneakerIcon3D,
+  },
+];
+export const CartIcon = [
+  {
+    name: "cart",
+    icon: cart,
   },
 ];
 
