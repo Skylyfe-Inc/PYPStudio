@@ -6,13 +6,15 @@ import { useSnapshot } from "valtio";
 import state from "../store";
 // import { download } from "../assets/assets";
 import { reader } from "../config/config/helpers";
-import cartIcon from '../../public/public/cart.png';
+
+import cartLogo from '../assets/assets/cartLogo.png';
 
 import {
   EditorTabs,
   FilterTabs,
   DecalTypes,
   CarouselTabs,
+
 } from "../config/config/constants";
 import { fadeAnimation, slideAnimation } from "../config/config/motion";
 import {
@@ -70,6 +72,10 @@ const Customizer = () => {
     navigate("/home");
   };
 
+  const handleCartNavigation = () => {
+    state.intro = true;
+    navigate("/cart");
+  };
   //Show tab content depending on the activeTab
   const generateTabContent = () => {
     switch (activeEditorTab) {
@@ -225,22 +231,23 @@ const Customizer = () => {
               </div>
             </div>
           </motion.div>
-          <div className="fixed top-5 right-40 flex space-x-4">
-  <CustomButton
-    type="filled"
-    title="Cart"
-    customStyles="py-2 px-4 font-bold text-sm"
-    src={cartIcon}
-    alt="logo"
-  />
-  <CustomButton
-    type="filled"
-    
-    title={`${count}`}
-    customStyles="py-2 px-4 font-bold text-sm"
-    
-  />
+
+          
+<div className="fixed top-5 right-40 flex space-x-4">
+  <div className="relative">
+    <CustomButton
+      type="plain"
+      customStyles="p-0 bg-transparent shadow-none hover:bg-transparent"
+      imageSrc={cartLogo}
+      alt="Cart Icon"
+      handleClick={handleCartNavigation}
+    />
+    <span className="absolute -top-2 -right-2 bg-teal-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+      {count}
+    </span>
+  </div>
 </div>
+
           <motion.div
             className="absolute z-10 top-5 right-5"
             {...fadeAnimation}

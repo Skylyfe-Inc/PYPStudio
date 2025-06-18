@@ -16,7 +16,7 @@ const SignupPage = React.lazy(() => import("./pages/SignUpPage"));
 const Home = React.lazy(() => import("./pages/Home"));
 const Customizer = React.lazy(() => import("./pages/Customizer"));
 const Canvas = React.lazy(() => import("./canvas"));
-
+const Cart = React.lazy(() => import("./pages/Cart"));
 function App() {
     const snap = useSnapshot(state);
 
@@ -48,6 +48,7 @@ function App() {
                                     </Suspense>
                                 </>
                             } />
+                              <Route path={AppRoutes.Cart.path} element={<Cart />} /> 
                         </Route>
                     </Route>
                     {/* Redirect all undefined routed to not found page */}
