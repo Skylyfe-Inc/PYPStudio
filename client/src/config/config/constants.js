@@ -30,6 +30,7 @@ export const CarouselTabs = [
   },
 ];
 
+
 export const EditorTabs = [
   {
     name: "scale",

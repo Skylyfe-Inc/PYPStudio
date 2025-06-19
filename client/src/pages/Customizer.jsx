@@ -6,11 +6,15 @@ import { useSnapshot } from "valtio";
 import state from "../store";
 // import { download } from "../assets/assets";
 import { reader } from "../config/config/helpers";
+
+import cartLogo from '../assets/assets/cartLogo.png';
+
 import {
   EditorTabs,
   FilterTabs,
   DecalTypes,
   CarouselTabs,
+
 } from "../config/config/constants";
 import { fadeAnimation, slideAnimation } from "../config/config/motion";
 import {
@@ -30,6 +34,7 @@ const Customizer = () => {
   //Set Image Generation
   const [file, setFile] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [count, setCount] = useState(0);
   const [generatingImg, setGeneratingImg] = useState(false);
   //Set Editor Tab & Filter Tab
   const [activeEditorTab, setActiveEditorTab] = useState("");
@@ -67,6 +72,10 @@ const Customizer = () => {
     navigate("/home");
   };
 
+  const handleCartNavigation = () => {
+    state.intro = true;
+    navigate("/cart");
+  };
   //Show tab content depending on the activeTab
   const generateTabContent = () => {
     switch (activeEditorTab) {
@@ -193,7 +202,13 @@ const Customizer = () => {
       setActiveEditorTab("");
     });
   };
-
+  const handleAddCartClick = () => {
+    setCount(prevCount => {
+      const newCount = prevCount + 1;
+      console.log("Add to Cart", newCount);
+      return newCount;
+    });
+  };
   return (
     <AnimatePresence>
       {!snap.intro && (
@@ -216,6 +231,23 @@ const Customizer = () => {
               </div>
             </div>
           </motion.div>
+
+          
+<div className="fixed top-5 right-40 flex space-x-4">
+  <div className="relative">
+    <CustomButton
+      type="plain"
+      customStyles="p-0 bg-transparent shadow-none hover:bg-transparent"
+      imageSrc={cartLogo}
+      alt="Cart Icon"
+      handleClick={handleCartNavigation}
+    />
+    <span className="absolute -top-2 -right-2 bg-teal-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+      {count}
+    </span>
+  </div>
+</div>
+
           <motion.div
             className="absolute z-10 top-5 right-5"
             {...fadeAnimation}
@@ -226,7 +258,16 @@ const Customizer = () => {
               handleClick={handleBackNavigation}
               customStyles="w=fit px-4 py-2.5 font-bold text-sm"
             />
+            
+
           </motion.div>
+          <CustomButton
+            type="filled"
+            title="Add to Cart"
+            handleAddCartClick={() => console.log("Add to Cart ")}
+           customStyles="py-2 px-4 font-bold text-sm fixed bottom-5 right-40 bg-blue-600 text-white z-50"
+            handleClick={handleAddCartClick}
+          />
           <CustomButton
             type="filled"
             title="Download"

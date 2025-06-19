@@ -6,7 +6,7 @@ const AppRoutes = {
   Customizer: { path: "/customizer" },
   Canvas: { path: "/canvas" },
   NotFound: { path: "*" },
-  
+  Cart:{path: "/cart" },
 };
 
 export default AppRoutes;
