@@ -18,7 +18,7 @@ const Backdrop = () => {
       frames={60} // Setting the amount of frames to accumulate over
       alphaTest={0.85} // Setting the alpha discard level
       scale={10} // Scaling the size of the shadow
-      rotation={[Math.PI / 2, 0, 0]} // Rotating the shadow
+      rotation={[Math.PI / 0, 0, 0]} // Rotating the shadow
       position={[0, 0, -0.14]} // Positioning the shadow
     >
       {/* Using the RandomizedLight component from drei library to add randomized lighting */}

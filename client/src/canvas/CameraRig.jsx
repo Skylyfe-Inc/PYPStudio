@@ -10,7 +10,7 @@ const CameraRig = ({ children }) => {
   const snap = useSnapshot(state);
 
   useFrame((state, delta) => {
-    const isBreakpoint = window.innerWidth <= 1260;
+    const isBreakpoint = window.innerWidth <= 2260;
     const isMobile = window.innerWidth <= 600;
 
     // Set target position based on breakpoint or mobile
@@ -25,9 +25,12 @@ const CameraRig = ({ children }) => {
 
     // Set camera position using damp3 and dampE
     easing.damp3(state.camera.position, targetPosition, 0.25);
+    
+    // Allow full 360 degree rotation by removing rotation constraints
     easing.dampE(
       group.current.rotation,
-      [state.pointer.y / 10, -state.pointer.x / 5, 0],
+      //[state.pointer.y / 10, -state.pointer.x / 5, 0],
+      [state.pointer.y, -state.pointer.x, state.pointer.y * state.pointer.x],
       0.25,
       delta
     );
