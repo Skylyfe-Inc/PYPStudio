@@ -79,7 +79,7 @@ const Customizer = () => {
   //Show tab content depending on the activeTab
   const generateTabContent = () => {
     switch (activeEditorTab) {
-      case "scaling":
+      case "scale":
         return <ScalingControls />;
       case "colorpicker":
         return <ColorPicker />;
