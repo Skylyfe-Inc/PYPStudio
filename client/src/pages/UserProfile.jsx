@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { CustomButton } from "../components/index.js";
+
 const UserProfile = () => {
   return (
     <div className="bg-gray-50 min-h-screen px-6 py-8">

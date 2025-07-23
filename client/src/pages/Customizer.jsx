@@ -66,9 +66,9 @@ const Customizer = () => {
     }
   }, [snap.activeModel]);
 
-  const handleUserProfileNavigation = () => {
-    console.log("User Profile");
-    state.intro = true;
+  const handleUserProfile = () => {
+    state.intro = false;
+   console.log("userprofile");
     navigate("/userprofile");
   };
 
@@ -267,13 +267,15 @@ const Customizer = () => {
               customStyles="w=fit px-4 py-2.5 font-bold text-sm"
             />
             
-            <CustomButton
+           
+          </motion.div>   
+          
+           <CustomButton
             type="filled"
             title="User Profile"
            customStyles="py-2 px-4 font-bold text-sm fixed bottom-5 left-40 bg-blue-600 text-white z-50"
-            handleClick={handleUserProfileNavigation}
-          />
-          </motion.div>          
+           handleClick={handleUserProfile}
+          />       
         
           <CustomButton
             type="filled"
