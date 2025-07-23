@@ -12,6 +12,7 @@ import {
   moveIcon,
 } from "../../assets/assets";
 
+// Pick the different item
 export const CarouselTabs = [
   {
     name: "shirt",
@@ -31,7 +32,7 @@ export const CarouselTabs = [
   },
 ];
 
-
+// Change Color, Size of Logo, etc..
 export const EditorTabs = [
   {
     name: "move",
@@ -56,6 +57,7 @@ export const EditorTabs = [
   
 ];
 
+//
 export const FilterTabs = [
   {
     name: "logoShirt",
@@ -67,6 +69,7 @@ export const FilterTabs = [
   },
 ];
 
+//
 export const DecalTypes = {
   logo: {
     stateProperty: "logoDecal",
@@ -78,6 +81,7 @@ export const DecalTypes = {
   },
 };
 
+//
 export const loginFields = [
   {
     labelText: "Email address",
