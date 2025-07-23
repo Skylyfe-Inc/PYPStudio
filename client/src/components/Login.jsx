@@ -5,6 +5,7 @@ import FormAction from "./FormAction";
 import FormExtra from "./FormExtra";
 import Input from "./Input";
 import { setToken } from "../config/config/helpers";
+import config from "../config/config/config";
 import { toastNotify } from "./Toast";
 import state from "../store";
 
@@ -29,13 +30,35 @@ export default function Login() {
   //Handle Login API Integration here
   async function authenticateUser() {
     // this function can be converted to async function when we integrate API for authentication and additional error boundaries can be set.
+     try {
+      const response = await fetch(`${config.authService}/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: loginState["email-address"],
+          password: loginState.password,
+        }),
+      });
+      const data = await response.json();
 
-    setToken("asdajsdjajsdhaksjdh"); // bypass
-    state.intro = true; //setting the home page display to true.
-    navigate("/home"); // along with updating the state we are navigating to '/'.
-    toastNotify("Logged In Successfully!", "success"); //displaying the notification for logged in.
+      if (!response.ok) {
+        throw new Error(data?.message || "Login failed");
+      }
+
+      if (data.token) {
+        setToken(data.token);
+      }
+
+      state.intro = true; //setting the home page display to true.
+      navigate("/home");
+      toastNotify("Logged In Successfully!", "success");
+    } catch (error) {
+      toastNotify(error.message || "Error logging in", "error");
+    }
   }
-
+  // Render the login form with fields and actions
   return (
     <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
       <div className="-space-y-px">
@@ -55,8 +78,8 @@ export default function Login() {
         ))}
       </div>
 
-      <FormExtra />
-      <FormAction handleSubmit={handleSubmit} text="Login" />
-    </form>
-  );
-}
+        <FormExtra />
+        <FormAction handleSubmit={handleSubmit} text="Login" />
+      </form>
+    );
+  }

@@ -1,5 +1,6 @@
 import { Router } from 'express';
-//import { firebase_admin, db, verifyToken } from '../utils/firebase';
+
+import { verifyToken } from '../utils/cognito.js';
 
 const router = Router();
 
@@ -16,10 +17,7 @@ router.post('/save', async (req, res) => {
             return res.status(401).json({ error: 'Unauthorized' });
         }        
 
-        // Proceed with saving the image to Firebase Cloud Storage
-        const bucket = firebase_admin.storage().bucket();
-        const file = bucket.file('path/to/image.jpg');
-        await file.save(imageData, { contentType: 'image/jpeg' });
+        
 
         return res.status(200).json({ message: 'Design saved successfully' });
     } catch (error) {

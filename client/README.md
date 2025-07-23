@@ -1,7 +1,3 @@
-# Place Your Print Studio
-
-A 3D product customization platform that enables users to create unique apparel designs with color customization, file uploads, and AI-generated designs.
-
 ## Overview
 
 Place Your Print Studio offers an interactive 3D environment where users can customize various products including shirts, hoodies, boots, and sneakers. The application features:
@@ -27,7 +23,7 @@ Place Your Print Studio offers an interactive 3D environment where users can cus
 - **Node.js**: Runtime environment
 - **Express**: Web framework 
 - **OpenAI API**: For generating custom designs
-- **Firebase Admin SDK**: For authentication and data storage
+- **AWS Cognito (AWS SDK)**: For authentication
 - **MongoDB**: Database integration
 - **Nodemon**: For development environment hot-reloading
 
@@ -60,9 +56,12 @@ The server exposes several RESTful endpoints:
 ### 2. Authentication (`/api/v1/auth`)
 - **POST /signup**: User registration with Firebase Authentication
 - **POST /login**: User authentication and token generation
+- **POST /signup**: User registration via AWS Cognito
+- **POST /login**: User login with token generation from Cognito
 
 ### 3. Design Management (`/api/v1/designs`)
-- **POST /save**: Saves user designs to Firebase Cloud Storage
+
+- **POST /save**: Saves user designs
 
 ## Key Features
 
@@ -100,11 +99,13 @@ The app has a complete authentication flow with:
 - Properly manages API keys using environment variables
 - Implements basic error handling and appropriate HTTP status codes
 - Processes images with URL-to-base64 conversion for client-side usage
-- Uses token-based authentication flow with Firebase
+
+- Uses token-based authentication flow with AWS Cognito
 
 ### Security Considerations
 - Environment variables should be properly secured
-- Firebase service account credentials should be stored safely
+
+- AWS credentials should be stored safely
 - Input validation should be implemented
 - Authentication middleware should be used consistently
 
@@ -134,8 +135,14 @@ npm install
 ```
 
 4. Create a `.env` file in the server directory with your OpenAI API key:
+4. Create a `.env` file in the server directory with your OpenAI and AWS Cognito credentials:
 ```
 OPENAI_API_KEY=your_api_key_here
+AWS_REGION=your_region
+COGNITO_USER_POOL_ID=your_user_pool_id
+COGNITO_CLIENT_ID=your_client_id
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret
 ```
 
 5. Start the backend server
@@ -153,9 +160,9 @@ npm run dev
 7. Access the application at `http://localhost:5173`
 
 ## Future Enhancements
-- Complete Firebase integration for authentication and design storage
+
+- Complete AWS integration for authentication and design storage
 - Improve error handling and validation
 - Implement user profile management
 - Add more 3D models and customization options
 - Enhance the AI design generation capabilities
-
