@@ -10,14 +10,14 @@ const Cart = () => {
       const [quantity, setQuantity] = useState(1);
 
   const handleIncrease = () => setQuantity(quantity + 1);
-  const handleDecrease = () => quantity > 1 && setQuantity(quantity - 1);
+  const handleDecrease = () => quantity > 1 && setQuantity(quantity - 1); // handleDecrease and handleIncrease //+ and - item  
   const handleCheckOutNavigation = () => {
     state.intro = true;
-    navigate("/cart");
+    navigate("/cart"); // checkout button 
   };
   const handleNewDesign = () => {
     state.intro = true;
-    navigate("/cart");
+    navigate("/cart");// navigate ti cart
   };
  return (
     <div className="p-6 max-w-4xl mx-auto font-sans">
