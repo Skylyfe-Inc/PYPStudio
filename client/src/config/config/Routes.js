@@ -6,7 +6,11 @@ const AppRoutes = {
   Customizer: { path: "/customizer" },
   Canvas: { path: "/canvas" },
   NotFound: { path: "*" },
-  Cart:{path: "/cart" },
+  Cart: { path: "/cart" },
+  VendorSignUpPage: { path: "/VendorSignUpPage" },
+  WelcomeAiStudio: { path: "/WelcomeAiStudio" },
+  IndividualSignUp: { path: "/IndividualSignUp" },
+  LoginStudio: { path: "/LoginStudio" },
 };
 
 export default AppRoutes;
