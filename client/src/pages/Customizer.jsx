@@ -1,11 +1,13 @@
 /* eslint-disable no-unused-vars */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSnapshot } from "valtio";
-// import config from "../config/config/config";
+import { useNavigate, useLocation } from "react-router-dom";
 import state from "../store";
-// import { download } from "../assets/assets";
 import { reader } from "../config/config/helpers";
+
+import cartLogo from "../assets/assets/cartLogo.png";
+
 import {
   EditorTabs,
   FilterTabs,
@@ -20,18 +22,41 @@ import {
   FilePicker,
   Tab,
 } from "../components/index.js";
-import { useNavigate } from "react-router-dom";
 import ScalingControls from "../components/ScalingControls.jsx";
 
+const STORAGE_KEY = "customizer_payload";
 
 const Customizer = () => {
   const navigate = useNavigate();
+  const { state: navState } = useLocation();            // NEW: get state from navigate()
   const snap = useSnapshot(state);
-  //Set Image Generation
+
+  // 🔒 Always show the customizer when this route mounts
+  useEffect(() => {
+    state.intro = false;                                 // NEW: prevents white screen on revisit
+  }, []);
+
+  // Merge route state with a localStorage fallback so refresh/revisit won’t break
+  const payload = useMemo(() => {                        // NEW: safe payload merge
+    const defaults = { source: "unknown", email: "", companyName: "", companyAddress: "" };
+    let stored = {};
+    try {
+      stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    } catch {}
+    return { ...defaults, ...stored, ...(navState || {}) };
+  }, [navState]);
+
+  // Keep the latest payload persisted (optional but handy)
+  useEffect(() => {                                      // NEW: persist newest payload
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch {}
+  }, [payload]);
+
+  // --- existing local UI state ---
   const [file, setFile] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [count, setCount] = useState(0);
   const [generatingImg, setGeneratingImg] = useState(false);
-  //Set Editor Tab & Filter Tab
+
   const [activeEditorTab, setActiveEditorTab] = useState("");
   const [activeFilterTab, setActiveFilterTab] = useState({
     logoShirt: true,
@@ -46,31 +71,30 @@ const Customizer = () => {
 
   // Reset scale when model changes
   useEffect(() => {
-    // Set default scale based on active model
     switch (snap.activeModel) {
       case "shirt":
       case "hoodie":
-        state.modelScale = { x: 1, y: 1, z: 1 };
-        break;
       case "boot":
       case "sneaker":
-        state.modelScale = { x: 1, y: 1, z: 1 };
-        break;
       default:
         state.modelScale = { x: 1, y: 1, z: 1 };
     }
   }, [snap.activeModel]);
-
 
   const handleBackNavigation = () => {
     state.intro = true;
     navigate("/home");
   };
 
-  //Show tab content depending on the activeTab
+  const handleCartNavigation = () => {
+    state.intro = true;
+    navigate("/cart");
+  };
+
+  // ----- Tabs -----
   const generateTabContent = () => {
     switch (activeEditorTab) {
-      case "scaling":
+      case "scale":
         return <ScalingControls />;
       case "colorpicker":
         return <ColorPicker />;
@@ -89,38 +113,23 @@ const Customizer = () => {
         return null;
     }
   };
-  //Handle Open AI API Calls
+
+  // ----- AI image submit -----
   const handleSubmit = async (type) => {
     if (!prompt) return alert("Please enter a prompt");
     try {
-      // Call our backend to generate AI Images
       setGeneratingImg(true);
-      const response = await fetch(
-        "http://localhost:8080/api/v1/images/generations",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            prompt,
-          }),
-        }
-      );
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-
+      const response = await fetch("http://localhost:8080/api/v1/images/generations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
       const data = await response.json();
-      // console.log(data)
-      // Check if data.photo is defined and not an empty string
-      if (
-        data.photo !== undefined &&
-        data.photoData !== null &&
-        typeof data.photo === "string" &&
-        data.photo.trim() !== ""
-      ) {
-        handleDecals(type, data.photoData);
+
+      // NOTE: your API field names looked inconsistent; adjust as needed
+      if (typeof data.photo === "string" && data.photo.trim()) {
+        handleDecals(type, data.photo);                  // or data.photoData if that’s correct
       } else {
         throw new Error("Invalid or empty photo data in the response");
       }
@@ -131,71 +140,56 @@ const Customizer = () => {
       setActiveEditorTab("");
     }
   };
+
   const handleDecals = (type, result) => {
-    // Get the decal type from the DecalTypes Object
     const decalType = DecalTypes[type];
-
-    // Update the state with the result
     state[decalType.stateProperty] = result;
-
-    // If the activeFilterTab does not have the decalType filterTab,
-    // call the handleActiveFilterTab function with the decalType filterTab
     if (!activeFilterTab[decalType.filterTab]) {
       handleActiveFilterTab(decalType.filterTab);
     }
   };
 
   const handleActiveFilterTab = (tabName) => {
-    // This function will handle the active filter tab
     switch (tabName) {
       case "logoShirt":
-        // if the tabName is logoShirt, then set the isLogoTexture to its opposite value
         state.isLogoTexture = !activeFilterTab[tabName];
         break;
       case "stylishShirt":
-        // if the tabName is stylishShirt, then set the isFullTexture to its opposite value
         state.isFullTexture = !activeFilterTab[tabName];
         break;
       default:
-        // if the tabName is neither logoShirt nor stylishShirt, then set isLogoTexture to true and isFullTexture to false
         state.isLogoTexture = true;
         state.isFullTexture = false;
         break;
     }
-    //setting the state, activeFilterTab is updated
-    setActiveFilterTab((prevState) => {
-      return {
-        ...prevState,
-        [tabName]: !prevState[tabName],
-      };
-    });
+    setActiveFilterTab((prev) => ({ ...prev, [tabName]: !prev[tabName] }));
   };
 
   const handleActiveModelTab = (tabName) => {
     state.activeModel = tabName;
-
     setActiveModelTab((prev) => {
-      const updatedTabs = Object.keys(prev).reduce((acc, key) => {
+      const updated = Object.keys(prev).reduce((acc, key) => {
         acc[key] = key === tabName;
         return acc;
       }, {});
-
-      return { ...prev, ...updatedTabs };
+      return { ...prev, ...updated };
     });
   };
 
   const readFile = (type) => {
-    // Read the file
     reader(file).then((result) => {
-      // Handle the decals with the given type and result
       handleDecals(type, result);
-      // Set the active editor tab
       setActiveEditorTab("");
     });
   };
 
-  return (
+  const handleAddCartClick = () => {
+    setCount((prev) => prev + 1);
+  };
+
+  return ( 
     <AnimatePresence>
+      {/* This guard is why you saw white; mount effect forces intro=false */}
       {!snap.intro && (
         <>
           <motion.div
@@ -216,10 +210,25 @@ const Customizer = () => {
               </div>
             </div>
           </motion.div>
-          <motion.div
-            className="absolute z-10 top-5 right-5"
-            {...fadeAnimation}
-          >
+
+          {/* Cart button + badge */}
+          <div className="fixed top-5 right-40 flex space-x-4">
+            <div className="relative">
+              <CustomButton
+                type="plain"
+                customStyles="p-0 bg-transparent shadow-none hover:bg-transparent"
+                imageSrc={cartLogo}
+                alt="Cart Icon"
+                handleClick={handleCartNavigation}
+              />
+              <span className="absolute -top-2 -right-2 bg-teal-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                {count}
+              </span>
+            </div>
+          </div>
+
+          {/* Back */}
+          <motion.div className="absolute z-10 top-5 right-5" {...fadeAnimation}>
             <CustomButton
               type="filled"
               title="Go Back"
@@ -227,30 +236,38 @@ const Customizer = () => {
               customStyles="w=fit px-4 py-2.5 font-bold text-sm"
             />
           </motion.div>
+
+          {/* Add to Cart */}
+          <CustomButton
+            type="filled"
+            title="Add to Cart"
+            handleAddCartClick={() => console.log("Add to Cart")}
+            customStyles="py-2 px-4 font-bold text-sm fixed bottom-5 right-40 bg-blue-600 text-white z-50"
+            handleClick={handleAddCartClick}
+          />
+
+          {/* Download */}
           <CustomButton
             type="filled"
             title="Download"
             handleClick={() => console.log("Handle Download")}
             customStyles="py-2 px-4 font-bold text-sm fixed bottom-5 right-5"
           />
-          <motion.div
-            className="filtertabs-container"
-            {...slideAnimation("up")}
-          >
+
+          {/* Filter tabs */}
+          <motion.div className="filtertabs-container" {...slideAnimation("up")}>
             {FilterTabs.map((tab) => (
               <Tab
                 key={tab.name}
                 tab={tab}
                 isFilterTab
                 isActiveTab={activeFilterTab[tab.name]}
-                handleClick={() =>
-                  handleActiveFilterTab(tab.name) +
-                  console.log("Filter Activated")
-                }
+                handleClick={() => handleActiveFilterTab(tab.name)}
               />
             ))}
           </motion.div>
 
+          {/* Model carousel */}
           <div className="absolute top-0 left-1/2 transform -translate-x-1/2 z-10">
             <div className="carousel-container">
               {CarouselTabs.map((tab) => (
@@ -264,6 +281,8 @@ const Customizer = () => {
               ))}
             </div>
           </div>
+
+          
         </>
       )}
     </AnimatePresence>

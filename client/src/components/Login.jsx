@@ -1,62 +1,88 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { loginFields } from "../config/config/constants";
-import FormAction from "./FormAction";
-import FormExtra from "./FormExtra";
-import Input from "./Input";
 import { setToken } from "../config/config/helpers";
-import { toastNotify } from "./Toast";
-import state from "../store";
-
-const fields = loginFields; //Importing static fields from config/helpers.
-let fieldsState = {};
-fields.forEach((field) => (fieldsState[field.id] = ""));
+import { toastNotify } from "../components/Toast";
+import fingerprint from "../assets/assets/fingerprint.png";
 
 export default function Login() {
-  const navigate = useNavigate(); //usage of navigation function from react-router-dom.
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
-  const [loginState, setLoginState] = useState(fieldsState);
-
-  const handleChange = (e) => {
-    setLoginState({ ...loginState, [e.target.id]: e.target.value }); // his updates the static state of login page fields.
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    authenticateUser(); // on submit we trigger this function for authentication where the api call will be done.
-  };
-
-  //Handle Login API Integration here
   async function authenticateUser() {
-    // this function can be converted to async function when we integrate API for authentication and additional error boundaries can be set.
-
-    setToken("asdajsdjajsdhaksjdh"); // bypass
-    state.intro = true; //setting the home page display to true.
-    navigate("/home"); // along with updating the state we are navigating to '/'.
-    toastNotify("Logged In Successfully!", "success"); //displaying the notification for logged in.
+    setToken("dummy_token_123");
+    toastNotify("Logged In Successfully!", "success");
   }
 
-  return (
-    <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-      <div className="-space-y-px">
-        {fields.map((field) => (
-          <Input
-            key={field.id}
-            handleChange={handleChange}
-            value={loginState[field.id]}
-            labelText={field.labelText}
-            labelFor={field.labelFor}
-            id={field.id}
-            name={field.name}
-            type={field.type}
-            isRequired={field.isRequired}
-            placeholder={field.placeholder}
-          />
-        ))}
-      </div>
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!email || !password) return;
 
-      <FormExtra />
-      <FormAction handleSubmit={handleSubmit} text="Login" />
-    </form>
+    try {
+      setLoading(true);
+      await authenticateUser();
+
+      console.log("About to navigate to /home");
+      navigate("/home");
+      console.log("navigate() called");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-300 flex items-center justify-center">
+      <div className="w-full max-w-xs bg-gray-300 p-6 rounded-lg flex flex-col items-center">
+        <h1 className="text-3xl font-extrabold tracking-wide text-black mb-1">
+          LOGIN
+        </h1>
+        <div className="h-1 w-16 bg-black mb-4" />
+
+        <img
+          src={fingerprint}
+          alt="Fingerprint"
+          className="w-24 h-24 object-contain mb-4"
+        />
+
+        <form onSubmit={handleSubmit} className="w-full flex flex-col">
+          <input
+            type="email"
+            placeholder="Email"
+            autoComplete="username"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full rounded-full border-[3px] border-black bg-white px-4 py-2 text-center placeholder:text-gray-600 mb-3 focus:outline-none focus:ring-0"
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full rounded-full border-[3px] border-black bg-white px-4 py-2 text-center placeholder:text-gray-600 mb-6 focus:outline-none focus:ring-0"
+          />
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="bg-yellow-400 border-black w-full border-2 font-semibold rounded-full py-2 mt-4 text-black hover:bg-yellow-500"
+          >
+            {loading ? "Logging in..." : "Login"}
+          </button>
+        </form>
+
+        <p className="mt-4 text-sm text-black">
+          Don’t have an account?{" "}
+          <button
+            type="button"
+            onClick={() => navigate("/WelcomeAiStudio")}
+            className="text-blue-600 font-semibold hover:underline"
+          >
+            Sign Up
+          </button>
+        </p>
+      </div>
+    </div>
   );
 }

@@ -62,7 +62,8 @@ const CanvasModel = () => {
             geometryName={"boot"}
             materialName={"boot"}
             position={[0, -0.1, 1.5]}
-            rotation={[0, -Math.PI / 4, 0]}
+           rotation={[0, -Math.PI / 4, 0]}
+      
             scale={[0.1, 0.1, 0.1]}
             decalProps={{
               full: { position: [0, 0, 0], rotation: [0, 0, 0], scale: 0.8 },

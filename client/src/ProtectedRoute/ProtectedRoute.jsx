@@ -8,7 +8,7 @@ const ProtectedRoute = () => {
   // Redirecting if token not found or user not logged in.
 
   if (!token || token === undefined) {
-    return <Navigate to={AppRoutes.Login.path} />;
+    return <Navigate to={AppRoutes.LoginStudio.path} />;
   }
 
   return <Outlet />;

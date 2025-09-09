@@ -67,7 +67,7 @@ const Model = ({
           <Decal
             position={decalProps["full"].position}
             rotation={decalProps["full"].rotation}
-            scale={decalProps["full"].scale}
+            scale={decalProps["full"].scale * (snap.decalScale || 1)}
             material-map={fullTexture}
           />
         )}
@@ -75,7 +75,8 @@ const Model = ({
           <Decal
             position={decalProps["logo"].position}
             rotation={decalProps["logo"].rotation}
-            scale={decalProps["logo"].scale}
+            
+            scale={decalProps["logo"].scale * (snap.decalScale || 1)}
             material-map={logoTexture}
             anisotropy={16}
           />

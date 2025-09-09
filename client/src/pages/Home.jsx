@@ -20,9 +20,11 @@ const Home = () => {
   const handleNavigate = () => {
     state.intro = false;
   };
+
+
   const handleLogout = () => {
     removeToken();
-    navigate("/login");
+    navigate("/");
   };
   // The component returns a set of motion components for animations
   return (
