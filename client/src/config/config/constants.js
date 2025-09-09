@@ -8,7 +8,8 @@ import {
   hoodieIcon3D,
   bootIcon3D,
   sneakerIcon3D,
-  scaleicon, 
+  scaleicon,
+  moveIcon,
 } from "../../assets/assets";
 
 export const CarouselTabs = [
@@ -33,6 +34,10 @@ export const CarouselTabs = [
 
 export const EditorTabs = [
   {
+    name: "move",
+    icon: moveIcon,
+  },
+  {
     name: "scale",
     icon: scaleicon,
   },
@@ -48,6 +53,7 @@ export const EditorTabs = [
     name: "aipicker",
     icon: ai,
   },
+  
 ];
 
 export const FilterTabs = [

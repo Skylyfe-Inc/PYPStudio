@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import state from "../store";
 import CustomButton from "./CustomButton";
+import { useSnapshot } from "valtio";
 
 
 const ScalingControls = () => {
@@ -13,13 +14,18 @@ const ScalingControls = () => {
         y: state.modelScale?.y || 1,
         z: state.modelScale?.z || 1
       });
-
+ const [decalScale, setDecalScale] = useState(state.decalScale || 1);
 
     // Update state when scale values change
   useEffect(() => {
     console.log(scaleValues + "scaleValues");
     state.modelScale = { ...scaleValues };
   }, [scaleValues]);
+
+  useEffect(() => {
+    state.decalScale = decalScale;
+  }, [decalScale]);
+  
 
 
   // Handle slider changes
@@ -38,8 +44,6 @@ const ScalingControls = () => {
     
     switch(snap.activeModel) {
         case "shirt":
-          defaultScale = { x: 0.008, y: 0.008, z: 0.008 };
-          break; 
         case "hoodie":
           defaultScale = { x: 0.008, y: 0.008, z: 0.008 };
           break;
@@ -51,10 +55,11 @@ const ScalingControls = () => {
           defaultScale = { x: 1, y: 1, z: 1 };
       }
       setScaleValues(defaultScale);
+      setDecalScale(1);
     };
 
   return (
-    <div className="scaling-container">
+    <div className="fixed left-10 p-11 top-11 scaling-container">
       <div 
         className="scaling-button"
         onClick={() => setShowControls(!showControls)}
@@ -78,11 +83,11 @@ const ScalingControls = () => {
                 min="0.1"
                 max="2"
                 step="0.05"
-                value={scaleValues.x}
+                value={typeof scaleValues.x === "number" ? scaleValues.x : 1}
                 onChange={(e) => handleScaleChange('x', e.target.value)}
                 className="w-32"
               />
-              <span className="w-10 text-center">{scaleValues.x.toFixed(2)}</span>
+              <span className="w-10 text-center">{Number(scaleValues.x).toFixed(2)}</span>
             </div>
             
             <div className="flex items-center space-x-2">
@@ -92,11 +97,11 @@ const ScalingControls = () => {
                 min="0.1"
                 max="2"
                 step="0.05"
-                value={scaleValues.y}
+                value={typeof scaleValues.y === "number" ? scaleValues.y : 1}
                 onChange={(e) => handleScaleChange('y', e.target.value)}
                 className="w-32"
               />
-              <span className="w-10 text-center">{scaleValues.y.toFixed(2)}</span>
+              <span className="w-10 text-center">{Number(scaleValues.y).toFixed(2)}</span>
             </div>
             
             <div className="flex items-center space-x-2">
@@ -106,11 +111,25 @@ const ScalingControls = () => {
                 min="0.1"
                 max="2"
                 step="0.05"
-                value={scaleValues.z}
+                value={typeof scaleValues.z === "number" ? scaleValues.z : 1}
                 onChange={(e) => handleScaleChange('z', e.target.value)}
                 className="w-32"
               />
-              <span className="w-10 text-center">{scaleValues.z.toFixed(2)}</span>
+              <span className="w-10 text-center">{Number(scaleValues.z).toFixed(2)}</span>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <span className="w-8 font-medium">Img:</span>
+              <input
+                type="range"
+                min="0.1"
+                max="2"
+                step="0.05"
+                value={typeof decalScale === "number" ? decalScale : 1}
+                onChange={(e) => setDecalScale(parseFloat(e.target.value))}
+                className="w-32"
+              />
+              <span className="w-10 text-center">{Number(decalScale).toFixed(2)}</span>
             </div>
             
             <div className="flex justify-center mt-2">

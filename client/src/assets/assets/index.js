@@ -3,6 +3,7 @@ import fileIcon from "./file.png";
 import swatch from "./swatch.png";
 import download from "./download.png";
 import scaleicon from "../scaleicon.js";
+import moveIcon from "./moveTool.png";
 
 import logoShirt from "./logo-tshirt.png";
 import stylishShirt from "./stylish-tshirt.png";
@@ -24,4 +25,5 @@ export {
   hoodieIcon3D,
   bootIcon3D,
   sneakerIcon3D,
+  moveIcon,
 };

@@ -12,6 +12,7 @@ const state = proxy({
   logoDecal: "../../public/PYPOTWBlack.png", // Path to the logo decal image
   fullDecal: "../../public/PYPOTWBlack.png", // Path to the full decal image
   modelScale: { x: 1, y: 1, z: 1 }, // Default scaling values for the model
+  decalScale: 1, // Default scaling value for decals
   activeModel: "shirt",
 });
 
