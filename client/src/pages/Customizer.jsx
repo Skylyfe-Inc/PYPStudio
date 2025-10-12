@@ -322,7 +322,7 @@ const Customizer = () => {
                 <img
                   src={downloadIcon}
                   alt="Download"
-n                  className="h-6 w-6 object-contain"
+                className="h-6 w-6 object-contain"
                 />
                 <span>Download</span>
               </button>
