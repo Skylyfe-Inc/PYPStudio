@@ -25,15 +25,17 @@ const CameraRig = ({ children }) => {
 
     // Set camera position using damp3 and dampE
     easing.damp3(state.camera.position, targetPosition, 0.25);
-    
-    // Allow full 360 degree rotation by removing rotation constraints
-    easing.dampE(
-      group.current.rotation,
-      //[state.pointer.y / 10, -state.pointer.x / 5, 0],
-      [state.pointer.y, -state.pointer.x, state.pointer.y * state.pointer.x],
-      0.25,
-      delta
-    );
+
+    if (group.current) {
+      const targetRotation = snap.manualRotation ?? { x: 0, y: 0, z: 0 };
+      easing.dampE(
+        group.current.rotation,
+        [targetRotation.x, targetRotation.y, targetRotation.z],
+        0.25,
+        delta
+      );
+    }
+
   });
   return <group ref={group}>{children}</group>;
 };

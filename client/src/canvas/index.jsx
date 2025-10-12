@@ -29,6 +29,12 @@ const CanvasModel = () => {
                 rotation: [0, 0, 0],
                 scale: 0.15,
               },
+              backFull: { position: [0, 0, 0], rotation: [0, Math.PI, 0], scale: 0.8 },
+              backLogo: {
+                position: [0, 0.04, -0.15],
+                rotation: [0, Math.PI, 0],
+                scale: 0.15,
+              },
             }}
           />
         );
@@ -52,6 +58,16 @@ const CanvasModel = () => {
                 rotation: [-Math.PI / 2, 0, 0],
                 scale: 20,
               },
+              backFull: {
+                position: [0, 55, 0],
+                rotation: [-Math.PI / 2, Math.PI, 0],
+                scale: 140,
+              },
+              backLogo: {
+                position: [0, 20, 5],
+                rotation: [-Math.PI / 2, Math.PI, 0],
+                scale: 20,
+              },
             }}
           />
         );
@@ -72,6 +88,12 @@ const CanvasModel = () => {
                 rotation: [0, Math.PI / 2, 0],
                 scale: 1,
               },
+              backFull: { position: [0, 0, 0], rotation: [0, Math.PI, 0], scale: 0.8 },
+              backLogo: {
+                position: [-0.5, 1.15, 1],
+                rotation: [0, -Math.PI / 2, 0],
+                scale: 1,
+              },
             }}
           />
         );
@@ -87,6 +109,12 @@ const CanvasModel = () => {
             decalProps={{
               full: { position: [0, 0, 0], rotation: [0, 0, 0], scale: 5 },
               logo: { position: [1, -1, 0.97], rotation: [0, 0, 0], scale: 1 },
+              backFull: { position: [0, 0, 0], rotation: [0, Math.PI, 0], scale: 5 },
+              backLogo: {
+                position: [-1, -1, -0.97],
+                rotation: [0, Math.PI, 0],
+                scale: 1,
+              },
             }}
           />
         );
@@ -105,6 +133,13 @@ const CanvasModel = () => {
       className="w-full max-w-full h-full transition-all ease-in"
     >
       <ambientLight intensity={0.5} />
+      <directionalLight
+        position={[0, 1.25, -6]}
+        intensity={0.75}
+        color="#fff4e6"
+        castShadow
+      />
+      <pointLight position={[2, 0.5, -4]} intensity={0.45} color="#ffe0c7" />
       <Environment preset="city" />
       <CameraRig>
         <Backdrop />

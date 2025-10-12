@@ -22,10 +22,62 @@ import {
   CustomButton,
   FilePicker,
   Tab,
+  RotationControl,
 } from "../components/index.js";
-import ScalingControls from "../components/ScalingControls.jsx";
 
 const STORAGE_KEY = "customizer_payload";
+
+const DEFAULT_FILTER_STATE = {
+  logoShirt: true,
+  stylishShirt: false,
+  logoBack: false,
+  stylishBack: false,
+};
+
+const FILTER_CONFIG = {
+  logoShirt: { boolKey: "isLogoTexture", decalKey: "logo" },
+  stylishShirt: { boolKey: "isFullTexture", decalKey: "full" },
+  logoBack: { boolKey: "isBackLogoTexture", decalKey: "backLogo" },
+  stylishBack: { boolKey: "isBackFullTexture", decalKey: "backFull" },
+};
+
+const DECAL_KEY_ORDER = ["logo", "full", "backLogo", "backFull"];
+
+const DECAL_KEY_TO_TAB = {
+  logo: "logoShirt",
+  full: "stylishShirt",
+  backLogo: "logoBack",
+  backFull: "stylishBack",
+};
+
+const ACTIVE_DECAL_LABELS = {
+  logo: "Front Logo",
+  full: "Front Full",
+  backLogo: "Back Logo",
+  backFull: "Back Full",
+};
+
+const getDefaultDecalScales = () => ({
+  logo: { x: 1, y: 1, z: 1 },
+  full: { x: 1, y: 1, z: 1 },
+  backLogo: { x: 1, y: 1, z: 1 },
+  backFull: { x: 1, y: 1, z: 1 },
+});
+
+const getDefaultDecalOffsets = () => ({
+  logo: { x: 0, y: 0, z: 0 },
+  full: { x: 0, y: 0, z: 0 },
+  backLogo: { x: 0, y: 0, z: 0 },
+  backFull: { x: 0, y: 0, z: 0 },
+});
+
+const computeFallbackDecalKey = (tabState) => {
+  for (const key of DECAL_KEY_ORDER) {
+    const tab = DECAL_KEY_TO_TAB[key];
+    if (tabState[tab]) return key;
+  }
+  return "";
+};
 
 const Customizer = () => {
   const navigate = useNavigate();
@@ -59,10 +111,9 @@ const Customizer = () => {
   const [generatingImg, setGeneratingImg] = useState(false);
 
   const [activeEditorTab, setActiveEditorTab] = useState("");
-  const [activeFilterTab, setActiveFilterTab] = useState({
-    logoShirt: true,
-    stylishShirt: false,
-  });
+  const [activeFilterTab, setActiveFilterTab] = useState(() => ({
+    ...DEFAULT_FILTER_STATE,
+  }));
   const [activeModelTab, setActiveModelTab] = useState({
     shirt: snap.activeModel === "shirt",
     hoodie: snap.activeModel === "hoodie",
@@ -71,15 +122,29 @@ const Customizer = () => {
   });
 
   // Reset scale when model changes
+  const resetDecalTransforms = () => {
+    const defaultTabs = { ...DEFAULT_FILTER_STATE };
+    setActiveFilterTab(defaultTabs);
+
+    state.isLogoTexture = defaultTabs.logoShirt;
+    state.isFullTexture = defaultTabs.stylishShirt;
+    state.isBackLogoTexture = defaultTabs.logoBack;
+    state.isBackFullTexture = defaultTabs.stylishBack;
+
+    state.modelScale = { x: 1, y: 1, z: 1 };
+    state.decalScale = getDefaultDecalScales();
+    state.decalOffset = getDefaultDecalOffsets();
+    state.activeTool = "";
+    state.manualRotation = { x: 0, y: 0, z: 0 };
+    state.activeDecalKey = computeFallbackDecalKey(defaultTabs) || "logo";
+  };
+
   useEffect(() => {
-    switch (snap.activeModel) {
-      case "shirt":
-      case "hoodie":
-      case "boot":
-      case "sneaker":
-      default:
-        state.modelScale = { x: 1, y: 1, z: 1 };
-    }
+    resetDecalTransforms();
+  }, []);
+
+  useEffect(() => {
+    resetDecalTransforms();
   }, [snap.activeModel]);
 
   const handleBackNavigation = () => {
@@ -102,10 +167,39 @@ const Customizer = () => {
   };
 
   // ----- Tabs -----
+  const handleEditorTabClick = (tabName) => {
+    const sameTab = activeEditorTab === tabName;
+    const nextTab = sameTab ? "" : tabName;
+
+    setActiveEditorTab(nextTab);
+
+    if (nextTab === "move" || nextTab === "scale") {
+      if (!state.activeDecalKey) {
+        const fallback = computeFallbackDecalKey(activeFilterTab);
+        if (fallback) state.activeDecalKey = fallback;
+      }
+      state.activeTool = nextTab;
+    } else {
+      state.activeTool = "";
+    }
+  };
+
   const generateTabContent = () => {
     switch (activeEditorTab) {
-      case "scale":
-        return <ScalingControls />;
+      case "move":
+      case "scale": {
+        const isMoveView = activeEditorTab === "move";
+        const title = isMoveView ? "Move Artwork" : "Scale Artwork";
+        const helper = isMoveView
+          ? "Drag the overlay arrows to reposition your art."
+          : "Use the handle or drag inside the box to resize.";
+        return (
+          <div className="move-scale-info">
+            <p className="font-semibold text-slate-900">{title}</p>
+            <p className="text-xs text-slate-600">{helper}</p>
+          </div>
+        );
+      }
       case "colorpicker":
         return <ColorPicker />;
       case "filepicker":
@@ -154,25 +248,30 @@ const Customizer = () => {
   const handleDecals = (type, result) => {
     const decalType = DecalTypes[type];
     state[decalType.stateProperty] = result;
+    state.activeDecalKey = decalType.decalKey;
     if (!activeFilterTab[decalType.filterTab]) {
       handleActiveFilterTab(decalType.filterTab);
     }
   };
 
   const handleActiveFilterTab = (tabName) => {
-    switch (tabName) {
-      case "logoShirt":
-        state.isLogoTexture = !activeFilterTab[tabName];
-        break;
-      case "stylishShirt":
-        state.isFullTexture = !activeFilterTab[tabName];
-        break;
-      default:
-        state.isLogoTexture = true;
-        state.isFullTexture = false;
-        break;
-    }
-    setActiveFilterTab((prev) => ({ ...prev, [tabName]: !prev[tabName] }));
+    const config = FILTER_CONFIG[tabName];
+    if (!config) return;
+
+    setActiveFilterTab((prev) => {
+      const nextValue = !prev[tabName];
+      const nextState = { ...prev, [tabName]: nextValue };
+
+      state[config.boolKey] = nextValue;
+
+      if (nextValue) {
+        state.activeDecalKey = config.decalKey;
+      } else if (state.activeDecalKey === config.decalKey) {
+        state.activeDecalKey = computeFallbackDecalKey(nextState);
+      }
+
+      return nextState;
+    });
   };
 
   const handleActiveModelTab = (tabName) => {
@@ -213,7 +312,8 @@ const Customizer = () => {
                   <Tab
                     key={tab.name}
                     tab={tab}
-                    handleClick={() => setActiveEditorTab(tab.name)}
+                    isActiveTab={activeEditorTab === tab.name}
+                    handleClick={() => handleEditorTabClick(tab.name)}
                   />
                 ))}
                 {generateTabContent()}
@@ -386,6 +486,14 @@ const Customizer = () => {
                 customStyles="flex-none px-6 py-2 text-sm font-bold shadow-md"
               />
             </div>
+          </div>
+
+          {/* Rotation control */}
+          <div className="md:flex hidden absolute right-6 bottom-6 z-40">
+            <RotationControl />
+          </div>
+          <div className="md:hidden fixed right-4 bottom-20 z-40">
+            <RotationControl />
           </div>
 
         </>

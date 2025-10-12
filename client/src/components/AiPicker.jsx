@@ -32,6 +32,18 @@ const AiPicker = ({ prompt, setPrompt, generatingImg, handleSubmit }) => {
               handleClick={() => handleSubmit("full")}
               customStyles="text-ms"
             />
+            <CustomButton
+              type="outline"
+              title="AI Back Logo"
+              handleClick={() => handleSubmit("backLogo")}
+              customStyles="text-ms"
+            />
+            <CustomButton
+              type="filled"
+              title="AI Back Full"
+              handleClick={() => handleSubmit("backFull")}
+              customStyles="text-ms"
+            />
           </>
         )}
       </div>
