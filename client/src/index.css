@@ -40,7 +40,8 @@ html {
 }
 
 .editortabs-container {
-  @apply glassmorphism w-16 border-[2px] rounded-lg flex flex-col justify-center items-center ml-1 py-4 gap-6;
+  @apply glassmorphism w-12 md:w-16 border-[2px] rounded-lg flex flex-col justify-center items-center ml-0 md:ml-1 py-2 md:py-4 gap-4 md:gap-6;
+  position: relative;
 }
 
 .filtertabs-container {
@@ -49,6 +50,7 @@ html {
 
 .aipicker-container {
   @apply absolute left-full ml-3 glassmorphism p-3 w-[195px] h-[220px] rounded-md flex flex-col gap-4;
+  margin-top: 5rem;
 }
 
 .aipicker-textarea {
@@ -57,6 +59,7 @@ html {
 
 .filepicker-container {
   @apply absolute left-full ml-3 glassmorphism p-3 w-[195px] h-[220px] flex flex-col rounded-md;
+  margin-top: 5rem;
 }
 
 .filepicker-label {
@@ -64,7 +67,221 @@ html {
 }
 
 .tab-btn {
-  @apply w-14 h-14 flex justify-center items-center cursor-pointer select-none;
+  @apply w-12 h-12 md:w-14 md:h-14 flex justify-center items-center cursor-pointer select-none;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.tab-label {
+  font-size: 0.55rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(15, 23, 42, 0.85);
+  text-align: center;
+  line-height: 1;
+}
+
+.decal-touch-wrapper {
+  position: relative;
+  pointer-events: auto;
+  touch-action: none;
+  border: 1px dashed rgba(255, 255, 255, 0.5);
+  border-radius: 12px;
+  background-color: rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(2px);
+}
+
+.decal-touch-wrapper.is-move {
+  border-color: rgba(74, 222, 128, 0.8);
+  background-color: rgba(16, 185, 129, 0.1);
+}
+
+.decal-touch-wrapper.is-scale {
+  border-color: rgba(56, 189, 248, 0.8);
+  background-color: rgba(14, 165, 233, 0.1);
+}
+
+.decal-touch-area {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.decal-touch-area:active {
+  cursor: grabbing;
+}
+
+.decal-touch-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.9);
+  background: rgba(255, 255, 255, 0.85);
+  padding: 0.1rem 0.4rem;
+  border-radius: 9999px;
+  pointer-events: none;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.decal-scale-area {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+  border: 2px dashed rgba(59, 130, 246, 0.4);
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.decal-scale-area:active {
+  cursor: grabbing;
+  border-color: rgba(59, 130, 246, 0.65);
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.decal-scale-handle {
+  position: absolute;
+  bottom: -14px;
+  right: -14px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9999px;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  background: rgba(56, 189, 248, 0.95);
+  color: #0f172a;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: nwse-resize;
+  touch-action: none;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.35);
+}
+
+.decal-scale-handle:active {
+  transform: scale(0.95);
+}
+
+.move-scale-info {
+  @apply glassmorphism;
+  position: absolute;
+  top: -5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 45;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.75rem;
+  color: #0f172a;
+  line-height: 1.2;
+  width: 180px;
+  text-align: right;
+  font-size: 0.64rem;
+  max-width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  align-items: flex-end;
+}
+
+@media (min-width: 768px) {
+  .move-scale-info {
+    width: max-content;
+    max-width: 240px;
+    font-size: 0.72rem;
+    padding: 0.55rem 0.8rem;
+    top: -4rem;
+  }
+}
+
+.rotation-thumb {
+  @apply glassmorphism;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 9999px;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.25);
+}
+
+.rotation-thumb__dial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 9999px;
+  border: 2px solid rgba(166, 173, 186, 0.6);
+  background: rgba(30, 41, 59, 0.75);
+  color: #e2e8f0;
+  font-size: 1.1rem;
+  cursor: grab;
+  touch-action: none;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.rotation-thumb__dial:active {
+  cursor: grabbing;
+  border-color: rgba(96, 165, 250, 0.85);
+  background: rgba(59, 130, 246, 0.35);
+}
+
+.rotation-thumb__dial:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rotation-thumb__icon {
+  pointer-events: none;
+}
+
+.rotation-thumb__readout {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.rotation-thumb__readout button {
+  padding: 0.1rem 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 9999px;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  background: rgba(255, 255, 255, 0.9);
+  color: #1e293b;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.rotation-thumb__readout button:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(96, 165, 250, 0.7);
+}
+
+.rotation-thumb__readout button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rotation-thumb--disabled {
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.rotation-thumb--active .rotation-thumb__dial {
+  border-color: rgba(96, 165, 250, 0.85);
+  background: rgba(59, 130, 246, 0.35);
 }
 
 .glassmorphism {

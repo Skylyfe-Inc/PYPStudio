@@ -3,6 +3,6 @@ import AiPicker from "./AiPicker";
 import ColorPicker from "./ColorPicker";
 import FilePicker from "./FilePicker";
 import Tab from "./Tab";
-import ScalingControls from "./ScalingControls";
+import RotationControl from "./RotationControl";
 
-export { CustomButton, AiPicker, ColorPicker, FilePicker, Tab, ScalingControls };
+export { CustomButton, AiPicker, ColorPicker, FilePicker, Tab, RotationControl };

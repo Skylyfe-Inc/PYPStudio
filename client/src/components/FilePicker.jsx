@@ -33,6 +33,18 @@ const FilePicker = ({ file, setFile, readFile }) => {
           handleClick={() => readFile("full")}
           customStyles="text-xs"
         />
+        <CustomButton
+          type="outline"
+          title="Back Logo"
+          handleClick={() => readFile("backLogo")}
+          customStyles="text-xs"
+        />
+        <CustomButton
+          type="filled"
+          title="Back Full"
+          handleClick={() => readFile("backFull")}
+          customStyles="text-xs"
+        />
       </div>
     </div>
   );
