@@ -489,7 +489,7 @@ const Customizer = () => {
           </div>
 
           {/* Rotation control */}
-          <div className="md:flex hidden absolute right-6 bottom-6 z-40">
+          <div className="md:flex hidden fixed right-6 top-1/2 -translate-y-1/2 z-40">
             <RotationControl />
           </div>
           <div className="md:hidden fixed right-4 bottom-20 z-40">
