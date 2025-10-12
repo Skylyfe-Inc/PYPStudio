@@ -190,9 +190,13 @@ const Customizer = () => {
       case "scale": {
         const isMoveView = activeEditorTab === "move";
         const title = isMoveView ? "Move Artwork" : "Scale Artwork";
+        const helper = isMoveView
+          ? "Drag the overlay arrows to reposition your art."
+          : "Use the handle or drag inside the box to resize.";
         return (
           <div className="move-scale-info">
             <p className="font-semibold text-slate-900">{title}</p>
+            <p className="text-xs text-slate-600">{helper}</p>
           </div>
         );
       }
@@ -485,7 +489,7 @@ const Customizer = () => {
           </div>
 
           {/* Rotation control */}
-          <div className="md:flex hidden fixed right-6 top-1/2 -translate-y-1/2 z-40">
+          <div className="md:flex hidden absolute right-6 bottom-6 z-40">
             <RotationControl />
           </div>
           <div className="md:hidden fixed right-4 bottom-20 z-40">
