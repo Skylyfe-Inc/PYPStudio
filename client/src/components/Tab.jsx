@@ -7,6 +7,8 @@ const Tab = ({ tab, isFilterTab, isActiveTab, handleClick }) => {
     isFilterTab && isActiveTab
       ? { backgroundColor: snap.color, opacity: 0.5 }
       : { backgroundColor: "transparent", opacity: 1 };
+  const label = tab.label || tab.name;
+
   return (
     <div
       key={tab.name}
@@ -15,6 +17,7 @@ const Tab = ({ tab, isFilterTab, isActiveTab, handleClick }) => {
       }`}
       onClick={handleClick}
       style={activeStyles}
+      title={label}
     >
       <img
         src={tab.icon}
@@ -23,6 +26,9 @@ const Tab = ({ tab, isFilterTab, isActiveTab, handleClick }) => {
           isFilterTab ? "w-2/3 h-2/3" : "w-11/12 h-11/12 object-contain"
         }`}
       />
+      {isFilterTab && (
+        <span className="tab-label">{label}</span>
+      )}
     </div>
   );
 };

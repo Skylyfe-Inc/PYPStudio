@@ -60,10 +60,22 @@ export const FilterTabs = [
   {
     name: "logoShirt",
     icon: logoShirt,
+    label: "Front Logo",
   },
   {
     name: "stylishShirt",
     icon: stylishShirt,
+    label: "Front Full",
+  },
+  {
+    name: "logoBack",
+    icon: logoShirt,
+    label: "Back Logo",
+  },
+  {
+    name: "stylishBack",
+    icon: stylishShirt,
+    label: "Back Full",
   },
 ];
 
@@ -71,10 +83,22 @@ export const DecalTypes = {
   logo: {
     stateProperty: "logoDecal",
     filterTab: "logoShirt",
+    decalKey: "logo",
   },
   full: {
     stateProperty: "fullDecal",
     filterTab: "stylishShirt",
+    decalKey: "full",
+  },
+  backLogo: {
+    stateProperty: "backLogoDecal",
+    filterTab: "logoBack",
+    decalKey: "backLogo",
+  },
+  backFull: {
+    stateProperty: "backFullDecal",
+    filterTab: "stylishBack",
+    decalKey: "backFull",
   },
 };
 

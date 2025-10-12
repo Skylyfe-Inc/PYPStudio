@@ -8,7 +8,7 @@ import { color } from "framer-motion";
 const ColorPicker = () => {
   const snap = useSnapshot(state);
   return (
-    <div className="absolute left-full ml-3">
+    <div className="absolute left-full ml-3 top-20">
       <SketchPicker
         color={snap.color}
         disableAlpha
