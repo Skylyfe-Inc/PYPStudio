@@ -8,6 +8,7 @@ import { getToken } from "./config/config/helpers";
 import state from "./store";
 import Layout from "./pages/Layout";
 import { useSnapshot } from "valtio";
+import AccessGate from "./components/AccessGate";
 
 // Using Lazy loading so as to improve the app performance. Only load pages when ever needed.
 const NotFound = React.lazy(() => import("./pages/NotFound"));
@@ -34,6 +35,7 @@ function App() {
 
     return (
         <Suspense fallback={<Loading />}>
+            <AccessGate>
             <main className="app transtion-allease-in">
                 <Toast /> {/*Toast Notification Component to view toast */}
                 {/* Routes setup */}
@@ -71,6 +73,7 @@ function App() {
                     <Route path="*" element={<NotFound />} />
                 </Routes>
             </main>
+            </AccessGate>
         </Suspense>
     )
 }

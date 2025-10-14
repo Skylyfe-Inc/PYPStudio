@@ -58,7 +58,17 @@ const ACTIVE_DECAL_LABELS = {
 };
 
 const DEFAULT_EXPECTED_AI_COUNT = 6;
-const API_BASE_URL = "http://localhost:8080";
+const inferDefaultApiBaseUrl = () => {
+  if (typeof window === "undefined") return "";
+  const origin = window.location.origin.replace(/\/$/, "");
+  return `${origin}/api`;
+};
+
+const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL ||
+  inferDefaultApiBaseUrl() ||
+  "http://localhost:8080"
+).replace(/\/$/, "");
 
 const AI_TYPE_DETAILS = {
   logo: { placement: "front", coverage: "logo" },
