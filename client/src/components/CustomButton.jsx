@@ -3,7 +3,16 @@ import state from "../store";
 import { useSnapshot } from "valtio";
 import { getContrastingColor } from "../config/config/helpers";
 
-const CustomButton = ({ type, title, customStyles, handleClick, imageSrc, children, alt }) => {
+const CustomButton = ({
+  type,
+  title,
+  customStyles,
+  handleClick,
+  imageSrc,
+  children,
+  alt,
+  disabled = false,
+}) => {
   // useSnapshot is used to take a snapshot of the current state
   const snap = useSnapshot(state);
 
@@ -38,9 +47,10 @@ const CustomButton = ({ type, title, customStyles, handleClick, imageSrc, childr
 
   return (
     <button
-      className={`px-2 py-1.5 flex-1 rounded-md ${customStyles}`}
+      className={`px-2 py-1.5 flex-1 rounded-md transition-transform duration-150 ${disabled ? "opacity-50 cursor-not-allowed" : "hover:scale-[1.01]"} ${customStyles}`}
       style={generateStyle(type)}
-      onClick={handleClick}
+      onClick={disabled ? undefined : handleClick}
+      disabled={disabled}
     >
        {imageSrc && (
         <img
