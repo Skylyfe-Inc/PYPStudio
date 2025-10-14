@@ -773,10 +773,7 @@ const Customizer = () => {
           </nav>
 
           {/* Filter tabs */}
-          <motion.div
-            className="filtertabs-container md:bottom-5 bottom-24"
-            {...slideAnimation("up")}
-          >
+          <motion.div className="filtertabs-container" {...slideAnimation("up")}>
             {FilterTabs.map((tab) => (
               <Tab
                 key={tab.name}
