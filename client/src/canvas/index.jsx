@@ -82,13 +82,13 @@ const CanvasModel = () => {
       
             scale={[0.1, 0.1, 0.1]}
             decalProps={{
-              full: { position: [0, 0, 0], rotation: [0, 0, 0], scale: 0.8 },
+              full: { position: [0, 0, 0], rotation: [0, 0, 0], scale: 2.5 },
               logo: {
                 position: [0.5, 1.15, -1],
                 rotation: [0, Math.PI / 2, 0],
                 scale: 1,
               },
-              backFull: { position: [0, 0, 0], rotation: [0, Math.PI, 0], scale: 0.8 },
+              backFull: { position: [0, 0, 0], rotation: [0, Math.PI, 0], scale: 2.5 },
               backLogo: {
                 position: [-0.5, 1.15, 1],
                 rotation: [0, -Math.PI / 2, 0],
