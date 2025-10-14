@@ -337,7 +337,7 @@ const Customizer = () => {
 
     const { placement, coverage } = decodeAiType(type);
 
-    const streamUrl = `${API_BASE_URL}/api/v1/images/generations/stream/${sessionId}`;
+    const streamUrl = `${API_BASE_URL}/v1/images/generations/stream/${sessionId}`;
 
     if (aiStreamRef.current) {
       aiStreamRef.current.close();
@@ -486,7 +486,7 @@ const Customizer = () => {
     });
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/images/generations`, {
+      const response = await fetch(`${API_BASE_URL}/v1/images/generations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -495,7 +495,21 @@ const Customizer = () => {
         }),
       });
 
-      const data = await response.json();
+      const contentType = response.headers.get("content-type") || "";
+      let data = null;
+      if (contentType.includes("application/json")) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        if (!response.ok) {
+          throw new Error(
+            text?.trim()
+              ? text.trim().slice(0, 200)
+              : `HTTP error! Status: ${response.status}`,
+          );
+        }
+        throw new Error("Unexpected response format from the AI service.");
+      }
 
       if (!response.ok) {
         throw new Error(
