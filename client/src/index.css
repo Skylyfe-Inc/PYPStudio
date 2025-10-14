@@ -9,6 +9,11 @@ html {
   font-family: "Inter", sans-serif;
 }
 
+body {
+  min-height: 100%;
+  overflow: hidden;
+}
+
 @supports (font-variation-settings: normal) {
   html {
     font-family: "Inter var", sans-serif;
