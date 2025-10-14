@@ -12,6 +12,10 @@ html {
 body {
   min-height: 100%;
   overflow: hidden;
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
 }
 
 @supports (font-variation-settings: normal) {
@@ -22,6 +26,10 @@ body {
 
 .app {
   @apply relative w-full h-screen overflow-hidden;
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
 }
 
 .home {
