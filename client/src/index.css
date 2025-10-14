@@ -49,12 +49,16 @@ html {
 }
 
 .aipicker-container {
-  @apply absolute left-full ml-3 glassmorphism p-3 w-[195px] h-[220px] rounded-md flex flex-col gap-4;
-  margin-top: 5rem;
+  @apply absolute left-full top-0 ml-4 w-[260px] h-[420px] bg-zinc-200 border-[3px] border-zinc-900 rounded-2xl shadow-lg flex flex-col gap-4 p-4;
+  margin-top: 4.5rem;
 }
 
 .aipicker-textarea {
-  @apply w-full bg-transparent text-sm border border-gray-300 p-2 outline-none flex-1;
+  @apply w-full resize-none rounded-lg border-2 border-zinc-900 bg-white text-sm text-slate-800 p-3 shadow-inner placeholder:text-slate-500;
+}
+
+.aipicker-grid {
+  @apply relative flex-1 grid grid-cols-3 gap-2;
 }
 
 .filepicker-container {

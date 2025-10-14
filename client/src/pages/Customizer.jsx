@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars */
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSnapshot } from "valtio";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -57,6 +57,26 @@ const ACTIVE_DECAL_LABELS = {
   backFull: "Back Full",
 };
 
+const DEFAULT_EXPECTED_AI_COUNT = 6;
+const API_BASE_URL = "http://localhost:8080";
+
+const AI_TYPE_DETAILS = {
+  logo: { placement: "front", coverage: "logo" },
+  full: { placement: "front", coverage: "full" },
+  backLogo: { placement: "back", coverage: "logo" },
+  backFull: { placement: "back", coverage: "full" },
+};
+
+const encodeAiType = (placement, coverage) => {
+  if (placement === "back") {
+    return coverage === "logo" ? "backLogo" : "backFull";
+  }
+  return coverage === "logo" ? "logo" : "full";
+};
+
+const decodeAiType = (type) =>
+  AI_TYPE_DETAILS[type] || { placement: "front", coverage: "logo" };
+
 const getDefaultDecalScales = () => ({
   logo: { x: 1, y: 1, z: 1 },
   full: { x: 1, y: 1, z: 1 },
@@ -84,7 +104,7 @@ const Customizer = () => {
   const { state: navState } = useLocation();            // NEW: get state from navigate()
   const snap = useSnapshot(state);
 
-  // 🔒 Always show the customizer when this route mounts
+  // Always show the customizer when this route mounts
   useEffect(() => {
     state.intro = false;                                 // NEW: prevents white screen on revisit
   }, []);
@@ -109,6 +129,16 @@ const Customizer = () => {
   const [prompt, setPrompt] = useState("");
   const [count, setCount] = useState(0);
   const [generatingImg, setGeneratingImg] = useState(false);
+  const [aiResults, setAiResults] = useState([]);
+  const [selectedAiImageId, setSelectedAiImageId] = useState(null);
+  const [activeAiType, setActiveAiType] = useState(null);
+  const [aiPlacement, setAiPlacement] = useState("front");
+  const [aiCoverage, setAiCoverage] = useState("logo");
+  const [aiExpectedCount, setAiExpectedCount] = useState(
+    DEFAULT_EXPECTED_AI_COUNT,
+  );
+  const aiStreamRef = useRef(null);
+  const aiImageCacheRef = useRef(new Map());
 
   const [activeEditorTab, setActiveEditorTab] = useState("");
   const [activeFilterTab, setActiveFilterTab] = useState(() => ({
@@ -147,6 +177,15 @@ const Customizer = () => {
     resetDecalTransforms();
   }, [snap.activeModel]);
 
+  useEffect(() => {
+    return () => {
+      if (aiStreamRef.current) {
+        aiStreamRef.current.close();
+        aiStreamRef.current = null;
+      }
+    };
+  }, []);
+
   const handleBackNavigation = () => {
     state.intro = true;
     navigate("/home");
@@ -166,6 +205,45 @@ const Customizer = () => {
     console.log("Handle Download");
   };
 
+  const handleAiPlacementChange = (placement) => {
+    if (placement === aiPlacement) return;
+
+    const nextType = encodeAiType(placement, aiCoverage);
+    const { coverage } = decodeAiType(nextType);
+    const cached = aiImageCacheRef.current.get(nextType);
+
+    if (aiStreamRef.current) {
+      aiStreamRef.current.close();
+      aiStreamRef.current = null;
+    }
+
+    setAiPlacement(placement);
+    setAiCoverage(coverage);
+
+    if (cached?.images?.length) {
+      setActiveAiType(nextType);
+      setAiResults(cached.images);
+      setSelectedAiImageId(
+        cached.selectedImageId || cached.images[0]?.id || null,
+      );
+      setAiExpectedCount(
+        cached.expectedCount || cached.images.length || DEFAULT_EXPECTED_AI_COUNT,
+      );
+      setGeneratingImg(false);
+      return;
+    }
+
+    setActiveAiType(nextType);
+    setAiResults([]);
+    setSelectedAiImageId(null);
+    setAiExpectedCount(DEFAULT_EXPECTED_AI_COUNT);
+    setGeneratingImg(false);
+
+    if (!prompt) return;
+
+    handleSubmit(nextType, { force: true });
+  };
+
   // ----- Tabs -----
   const handleEditorTabClick = (tabName) => {
     const sameTab = activeEditorTab === tabName;
@@ -182,6 +260,20 @@ const Customizer = () => {
     } else {
       state.activeTool = "";
     }
+  };
+
+  const handleSelectAiImage = (imageId) => {
+    const cacheKey = activeAiType || encodeAiType(aiPlacement, aiCoverage);
+    setSelectedAiImageId(imageId);
+    if (!cacheKey) return;
+    const existing = aiImageCacheRef.current.get(cacheKey) || {};
+    const { placement, coverage } = decodeAiType(cacheKey);
+    aiImageCacheRef.current.set(cacheKey, {
+      ...existing,
+      placement,
+      coverage,
+      selectedImageId: imageId,
+    });
   };
 
   const generateTabContent = () => {
@@ -204,45 +296,276 @@ const Customizer = () => {
         return <ColorPicker />;
       case "filepicker":
         return <FilePicker file={file} setFile={setFile} readFile={readFile} />;
-      case "aipicker":
+      case "aipicker": {
+        const currentAiType = encodeAiType(aiPlacement, aiCoverage);
+        const currentAiLabel =
+          ACTIVE_DECAL_LABELS[currentAiType] || "Front Logo";
+        const activeAiLabel = activeAiType
+          ? ACTIVE_DECAL_LABELS[activeAiType]
+          : currentAiLabel;
         return (
           <AiPicker
             prompt={prompt}
             setPrompt={setPrompt}
             generatingImg={generatingImg}
             handleSubmit={handleSubmit}
+            results={aiResults}
+            selectedImageId={selectedAiImageId}
+            onSelectImage={handleSelectAiImage}
+            onApply={handleApplySelectedImage}
+            activeAiType={activeAiType}
+            activeAiTypeLabel={activeAiLabel}
+            currentType={currentAiType}
+            currentTypeLabel={currentAiLabel}
+            placement={aiPlacement}
+            onPlacementChange={handleAiPlacementChange}
+            coverage={aiCoverage}
+            expectedCount={aiExpectedCount}
           />
         );
+      }
       default:
         return null;
     }
   };
 
+  const startAiStream = (sessionId, type) => {
+    if (!sessionId || !type) return;
+
+    const { placement, coverage } = decodeAiType(type);
+
+    const streamUrl = `${API_BASE_URL}/api/v1/images/generations/stream/${sessionId}`;
+
+    if (aiStreamRef.current) {
+      aiStreamRef.current.close();
+      aiStreamRef.current = null;
+    }
+
+    const source = new EventSource(streamUrl);
+    aiStreamRef.current = source;
+
+    source.addEventListener("image", (event) => {
+      try {
+        const payload = JSON.parse(event.data || "{}");
+        const { image } = payload || {};
+        if (!image) return;
+
+        setAiResults((prev) => {
+          const previous = Array.isArray(prev) ? prev : [];
+          const exists = previous.some((item) => item.id === image.id);
+          if (exists) return previous;
+          const next = [...previous, image];
+          next.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+          aiImageCacheRef.current.set(type, {
+            ...(aiImageCacheRef.current.get(type) || {}),
+            placement,
+            coverage,
+            images: next,
+          });
+          return next;
+        });
+
+        setSelectedAiImageId((prevId) => {
+          const entry = aiImageCacheRef.current.get(type) || {};
+          const nextSelected =
+            prevId || entry.selectedImageId || image.id || null;
+          aiImageCacheRef.current.set(type, {
+            ...entry,
+            placement,
+            coverage,
+            selectedImageId: nextSelected,
+          });
+          return nextSelected;
+        });
+      } catch (err) {
+        console.error("Failed to parse AI stream image payload", err);
+      }
+    });
+
+    source.addEventListener("done", (event) => {
+      if (event?.data) {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload?.total) {
+            setAiExpectedCount(payload.total);
+            const entry = aiImageCacheRef.current.get(type) || {};
+            aiImageCacheRef.current.set(type, {
+              ...entry,
+              placement,
+              coverage,
+              expectedCount: payload.total,
+            });
+          }
+        } catch (err) {
+          console.error("Failed to parse AI stream completion payload", err);
+        }
+      }
+      setGeneratingImg(false);
+      source.close();
+      aiStreamRef.current = null;
+    });
+
+    source.addEventListener("error", (event) => {
+      if (source.readyState !== EventSource.CLOSED) {
+        console.error("AI stream error", event);
+      }
+      setGeneratingImg(false);
+      source.close();
+      aiStreamRef.current = null;
+    });
+  };
+
   // ----- AI image submit -----
-  const handleSubmit = async (type) => {
+  const handleSubmit = async (type, options = {}) => {
     if (!prompt) return alert("Please enter a prompt");
+    const { reuseExisting = false, force = false } = options;
+    const { placement, coverage } = decodeAiType(type);
+    const cached = aiImageCacheRef.current.get(type);
+
+    if (reuseExisting && !force && cached?.images?.length) {
+      if (aiStreamRef.current) {
+        aiStreamRef.current.close();
+        aiStreamRef.current = null;
+      }
+
+      setAiPlacement(placement);
+      setAiCoverage(coverage);
+      setActiveAiType(type);
+      setAiResults(cached.images);
+      setSelectedAiImageId(
+        cached.selectedImageId || cached.images[0]?.id || null,
+      );
+      setAiExpectedCount(
+        cached.expectedCount ||
+          cached.images.length ||
+          DEFAULT_EXPECTED_AI_COUNT,
+      );
+      setGeneratingImg(false);
+      return;
+    }
+
+    if (aiStreamRef.current) {
+      aiStreamRef.current.close();
+      aiStreamRef.current = null;
+    }
+
+    setAiPlacement(placement);
+    setAiCoverage(coverage);
+    setAiResults([]);
+    setSelectedAiImageId(null);
+    setActiveAiType(type);
+    setAiExpectedCount(DEFAULT_EXPECTED_AI_COUNT);
+    setGeneratingImg(true);
+
+    aiImageCacheRef.current.set(type, {
+      placement,
+      coverage,
+      images: [],
+      expectedCount: DEFAULT_EXPECTED_AI_COUNT,
+      selectedImageId: null,
+    });
+
     try {
-      setGeneratingImg(true);
-      const response = await fetch("http://localhost:8080/api/v1/images/generations", {
+      const response = await fetch(`${API_BASE_URL}/api/v1/images/generations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({
+          prompt,
+          count: DEFAULT_EXPECTED_AI_COUNT,
+        }),
       });
-      if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+
       const data = await response.json();
 
-      // NOTE: your API field names looked inconsistent; adjust as needed
-      if (typeof data.photo === "string" && data.photo.trim()) {
-        handleDecals(type, data.photo);                  // or data.photoData if that’s correct
-      } else {
-        throw new Error("Invalid or empty photo data in the response");
+      if (!response.ok) {
+        throw new Error(
+          data?.message || `HTTP error! Status: ${response.status}`,
+        );
       }
+
+      const { requestId, image, total } = data || {};
+
+      if (!requestId || !image) {
+        throw new Error("Invalid response from AI service");
+      }
+
+      const nextExpected = total || DEFAULT_EXPECTED_AI_COUNT;
+      const initialImages = [image];
+
+      setAiExpectedCount(nextExpected);
+      setAiResults(initialImages);
+      setSelectedAiImageId(image.id);
+
+      aiImageCacheRef.current.set(type, {
+        placement,
+        coverage,
+        images: initialImages,
+        expectedCount: nextExpected,
+        selectedImageId: image.id,
+      });
+
+      startAiStream(requestId, type);
     } catch (error) {
-      alert(error);
-    } finally {
       setGeneratingImg(false);
-      setActiveEditorTab("");
+
+      if (cached?.images?.length) {
+        setAiResults(cached.images);
+        setSelectedAiImageId(
+          cached.selectedImageId || cached.images[0]?.id || null,
+        );
+        setAiExpectedCount(
+          cached.expectedCount ||
+            cached.images.length ||
+            DEFAULT_EXPECTED_AI_COUNT,
+        );
+        aiImageCacheRef.current.set(type, cached);
+      } else {
+        setAiResults([]);
+        setSelectedAiImageId(null);
+        aiImageCacheRef.current.delete(type);
+      }
+
+      alert(error instanceof Error ? error.message : String(error));
     }
+  };
+
+  const handleApplySelectedImage = () => {
+    if (!activeAiType) {
+      alert("Select which decal to apply the image to.");
+      return;
+    }
+
+    if (aiStreamRef.current) {
+      aiStreamRef.current.close();
+      aiStreamRef.current = null;
+    }
+
+    const selectedImage =
+      aiResults.find((item) => item.id === selectedAiImageId) || aiResults[0];
+
+    if (!selectedImage) {
+      alert("No AI image selected.");
+      return;
+    }
+
+    const source = selectedImage.base64 || selectedImage.url;
+
+    if (!source) {
+      alert("Selected AI image does not include usable image data.");
+      return;
+    }
+
+    if (activeAiType) {
+      const entry = aiImageCacheRef.current.get(activeAiType) || {};
+      aiImageCacheRef.current.set(activeAiType, {
+        ...entry,
+        selectedImageId: selectedAiImageId || selectedImage.id,
+      });
+    }
+
+    handleDecals(activeAiType, source);
+    setGeneratingImg(false);
+    setActiveEditorTab("");
   };
 
   const handleDecals = (type, result) => {
