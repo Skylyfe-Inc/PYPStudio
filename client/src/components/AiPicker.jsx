@@ -29,7 +29,6 @@ const AiPicker = ({
   results = [],
   selectedImageId,
   onSelectImage = () => {},
-  onApply = () => {},
   activeAiType,
   activeAiTypeLabel,
   currentType,
@@ -183,15 +182,6 @@ const AiPicker = ({
           })}
         </div>
 
-        {hasResults && (
-          <CustomButton
-            type="custom"
-            title="Use Selected Image"
-            handleClick={onApply}
-            disabled={!selectedImageId || !activeAiType}
-            customStyles="mt-2 w-full justify-center rounded-lg border-2 border-zinc-900 bg-zinc-900 py-2 text-[12px] font-semibold uppercase tracking-wide text-white hover:bg-black"
-          />
-        )}
       </div>
     </div>
   );

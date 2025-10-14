@@ -1,7 +1,8 @@
 import { easing } from "maath";
 import { useSnapshot } from "valtio";
 import { useFrame } from "@react-three/fiber";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react";
+import { Color } from "three";
 import { Decal, useGLTF, useTexture, Html } from "@react-three/drei";
 import state from "../store";
 
@@ -20,6 +21,7 @@ const Model = ({
   const meshRef = useRef();
   const dragRef = useRef(null);
   const rotateDragRef = useRef(null);
+  const soleColor = useMemo(() => new Color(0x000000), []);
   const ZERO_VECTOR = { x: 0, y: 0, z: 0 };
   const DECAL_KEYS = ["logo", "full", "backLogo", "backFull"];
 
@@ -319,9 +321,24 @@ const Model = ({
   }, [snap.modelScale, scale]);
 
   // useFrame() takes in a state object and delta and returns an easing dampC
-  useFrame((state, delta) =>
-    easing.dampC(materials[materialName].color, snap.color, 0.25, delta)
-  );
+  useFrame((state, delta) => {
+    if (snap.activeModel === "boot" && meshRef.current) {
+      const material = meshRef.current.material;
+      if (Array.isArray(material)) {
+        material.forEach((mat, index) => {
+          if (!mat?.color) return;
+          if (index === 0) {
+            easing.dampC(mat.color, snap.color, 0.25, delta);
+          } else {
+            easing.dampC(mat.color, soleColor, 0.25, delta);
+          }
+        });
+        return;
+      }
+    }
+
+    easing.dampC(materials[materialName].color, snap.color, 0.25, delta);
+  });
 
   // JSON.stringify() takes in a snapshot and returns a string
   const stateString = JSON.stringify(snap);

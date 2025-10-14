@@ -189,7 +189,11 @@ const Customizer = () => {
 
   useEffect(() => {
     const handlePointerDown = (event) => {
-      if (!editorTabsRef.current) return;
+      if (!editorTabsRef.current) {
+        setActiveEditorTab("");
+        state.activeTool = "";
+        return;
+      }
       if (editorTabsRef.current.contains(event.target)) return;
       setActiveEditorTab("");
       state.activeTool = "";
@@ -222,41 +226,9 @@ const Customizer = () => {
 
   const handleAiPlacementChange = (placement) => {
     if (placement === aiPlacement) return;
-
     const nextType = encodeAiType(placement, aiCoverage);
-    const { coverage } = decodeAiType(nextType);
-    const cached = aiImageCacheRef.current.get(nextType);
-
-    if (aiStreamRef.current) {
-      aiStreamRef.current.close();
-      aiStreamRef.current = null;
-    }
-
     setAiPlacement(placement);
-    setAiCoverage(coverage);
-
-    if (cached?.images?.length) {
-      setActiveAiType(nextType);
-      setAiResults(cached.images);
-      setSelectedAiImageId(
-        cached.selectedImageId || cached.images[0]?.id || null,
-      );
-      setAiExpectedCount(
-        cached.expectedCount || cached.images.length || DEFAULT_EXPECTED_AI_COUNT,
-      );
-      setGeneratingImg(false);
-      return;
-    }
-
-    setActiveAiType(nextType);
-    setAiResults([]);
-    setSelectedAiImageId(null);
-    setAiExpectedCount(DEFAULT_EXPECTED_AI_COUNT);
-    setGeneratingImg(false);
-
-    if (!prompt) return;
-
-    handleSubmit(nextType, { force: true });
+    handleSubmit(nextType, { reuseExisting: true });
   };
 
   // ----- Tabs -----
@@ -280,6 +252,13 @@ const Customizer = () => {
   const handleSelectAiImage = (imageId) => {
     const cacheKey = activeAiType || encodeAiType(aiPlacement, aiCoverage);
     setSelectedAiImageId(imageId);
+    const selectedImage = aiResults.find((item) => item.id === imageId);
+    if (selectedImage) {
+      const source = selectedImage.base64 || selectedImage.url;
+      if (source && activeAiType) {
+        handleDecals(activeAiType, source);
+      }
+    }
     if (!cacheKey) return;
     const existing = aiImageCacheRef.current.get(cacheKey) || {};
     const { placement, coverage } = decodeAiType(cacheKey);
@@ -327,7 +306,6 @@ const Customizer = () => {
             results={aiResults}
             selectedImageId={selectedAiImageId}
             onSelectImage={handleSelectAiImage}
-            onApply={handleApplySelectedImage}
             activeAiType={activeAiType}
             activeAiTypeLabel={activeAiLabel}
             currentType={currentAiType}
@@ -432,12 +410,14 @@ const Customizer = () => {
 
   // ----- AI image submit -----
   const handleSubmit = async (type, options = {}) => {
-    if (!prompt) return alert("Please enter a prompt");
     const { reuseExisting = false, force = false } = options;
     const { placement, coverage } = decodeAiType(type);
     const cached = aiImageCacheRef.current.get(type);
+    const fallbackImages = cached?.images?.length ? cached.images : aiResults;
+    const fallbackSelected = cached?.selectedImageId || selectedAiImageId || fallbackImages?.[0]?.id || null;
+    const fallbackExpected = cached?.expectedCount || aiExpectedCount || DEFAULT_EXPECTED_AI_COUNT;
 
-    if (reuseExisting && !force && cached?.images?.length) {
+    if (reuseExisting && !force && fallbackImages?.length) {
       if (aiStreamRef.current) {
         aiStreamRef.current.close();
         aiStreamRef.current = null;
@@ -446,16 +426,31 @@ const Customizer = () => {
       setAiPlacement(placement);
       setAiCoverage(coverage);
       setActiveAiType(type);
-      setAiResults(cached.images);
-      setSelectedAiImageId(
-        cached.selectedImageId || cached.images[0]?.id || null,
-      );
-      setAiExpectedCount(
-        cached.expectedCount ||
-          cached.images.length ||
-          DEFAULT_EXPECTED_AI_COUNT,
-      );
+      setAiResults(fallbackImages);
+      setSelectedAiImageId(fallbackSelected);
+      setAiExpectedCount(fallbackExpected || DEFAULT_EXPECTED_AI_COUNT);
       setGeneratingImg(false);
+
+      aiImageCacheRef.current.set(type, {
+        placement,
+        coverage,
+        images: fallbackImages,
+        expectedCount: fallbackExpected || fallbackImages.length || DEFAULT_EXPECTED_AI_COUNT,
+        selectedImageId: fallbackSelected,
+      });
+      return;
+    }
+
+    if (reuseExisting && !fallbackImages?.length && !prompt) {
+      setAiPlacement(placement);
+      setAiCoverage(coverage);
+      setActiveAiType(type);
+      setGeneratingImg(false);
+      return;
+    }
+
+    if (!prompt) {
+      alert("Please enter a prompt to generate AI images");
       return;
     }
 
@@ -542,45 +537,6 @@ const Customizer = () => {
 
       alert(error instanceof Error ? error.message : String(error));
     }
-  };
-
-  const handleApplySelectedImage = () => {
-    if (!activeAiType) {
-      alert("Select which decal to apply the image to.");
-      return;
-    }
-
-    if (aiStreamRef.current) {
-      aiStreamRef.current.close();
-      aiStreamRef.current = null;
-    }
-
-    const selectedImage =
-      aiResults.find((item) => item.id === selectedAiImageId) || aiResults[0];
-
-    if (!selectedImage) {
-      alert("No AI image selected.");
-      return;
-    }
-
-    const source = selectedImage.base64 || selectedImage.url;
-
-    if (!source) {
-      alert("Selected AI image does not include usable image data.");
-      return;
-    }
-
-    if (activeAiType) {
-      const entry = aiImageCacheRef.current.get(activeAiType) || {};
-      aiImageCacheRef.current.set(activeAiType, {
-        ...entry,
-        selectedImageId: selectedAiImageId || selectedImage.id,
-      });
-    }
-
-    handleDecals(activeAiType, source);
-    setGeneratingImg(false);
-    setActiveEditorTab("");
   };
 
   const handleDecals = (type, result) => {
@@ -691,7 +647,7 @@ const Customizer = () => {
             />
           </motion.div>
 
-          {/* Add to Cart - desktop */}
+          {/* Add to Cart */}
           <div className="hidden md:block">
             <CustomButton
               type="filled"
@@ -804,8 +760,8 @@ const Customizer = () => {
           </motion.div>
 
           {/* Model carousel */}
-          <div className="absolute top-0 left-1/2 transform -translate-x-1/2 z-10 flex flex-col items-center gap-4">
-            <div className="carousel-container">
+          <div className="absolute left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-4 top-20 md:top-0">
+            <div className="carousel-container md:mt-0 mt-4">
               {CarouselTabs.map((tab) => (
                 <Tab
                   key={tab.name}
@@ -816,14 +772,16 @@ const Customizer = () => {
                 />
               ))}
             </div>
-            <div className="md:hidden">
-              <CustomButton
-                type="filled"
-                title="Add to Cart"
-                handleClick={handleAddCartClick}
-                customStyles="flex-none px-6 py-2 text-sm font-bold shadow-md"
-              />
-            </div>
+          </div>
+
+          {/* Add to Cart - mobile */}
+          <div className="md:hidden fixed left-1/2 -translate-x-1/2 bottom-20 z-40">
+            <CustomButton
+              type="filled"
+              title="Add to Cart"
+              handleClick={handleAddCartClick}
+              customStyles="px-8 py-2 text-sm font-bold shadow-lg"
+            />
           </div>
 
           {/* Rotation control */}
