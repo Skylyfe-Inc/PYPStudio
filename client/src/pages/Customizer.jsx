@@ -139,6 +139,7 @@ const Customizer = () => {
   );
   const aiStreamRef = useRef(null);
   const aiImageCacheRef = useRef(new Map());
+  const editorTabsRef = useRef(null);
 
   const [activeEditorTab, setActiveEditorTab] = useState("");
   const [activeFilterTab, setActiveFilterTab] = useState(() => ({
@@ -183,6 +184,20 @@ const Customizer = () => {
         aiStreamRef.current.close();
         aiStreamRef.current = null;
       }
+    };
+  }, []);
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      if (!editorTabsRef.current) return;
+      if (editorTabsRef.current.contains(event.target)) return;
+      setActiveEditorTab("");
+      state.activeTool = "";
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
     };
   }, []);
 
@@ -619,7 +634,7 @@ const Customizer = () => {
     setCount((prev) => prev + 1);
   };
 
-  return ( 
+  return (
     <AnimatePresence>
       {/* This guard is why you saw white; mount effect forces intro=false */}
       {!snap.intro && (
@@ -630,7 +645,10 @@ const Customizer = () => {
             {...slideAnimation("left")}
           >
             <div className="flex items-center min-h-screen">
-              <div className="editortabs-container tabs">
+              <div
+                ref={editorTabsRef}
+                className="editortabs-container tabs"
+              >
                 {EditorTabs.map((tab) => (
                   <Tab
                     key={tab.name}
