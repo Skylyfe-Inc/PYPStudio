@@ -58,17 +58,7 @@ const ACTIVE_DECAL_LABELS = {
 };
 
 const DEFAULT_EXPECTED_AI_COUNT = 6;
-const inferDefaultApiBaseUrl = () => {
-  if (typeof window === "undefined") return "";
-  const origin = window.location.origin.replace(/\/$/, "");
-  return `${origin}/api`;
-};
-
-const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL ||
-  inferDefaultApiBaseUrl() ||
-  "http://localhost:8080"
-).replace(/\/$/, "");
+const API_BASE_URL = "http://localhost:8080";
 
 const AI_TYPE_DETAILS = {
   logo: { placement: "front", coverage: "logo" },
@@ -262,13 +252,6 @@ const Customizer = () => {
   const handleSelectAiImage = (imageId) => {
     const cacheKey = activeAiType || encodeAiType(aiPlacement, aiCoverage);
     setSelectedAiImageId(imageId);
-    const selectedImage = aiResults.find((item) => item.id === imageId);
-    if (selectedImage) {
-      const source = selectedImage.base64 || selectedImage.url;
-      if (source && activeAiType) {
-        handleDecals(activeAiType, source);
-      }
-    }
     if (!cacheKey) return;
     const existing = aiImageCacheRef.current.get(cacheKey) || {};
     const { placement, coverage } = decodeAiType(cacheKey);
@@ -316,6 +299,7 @@ const Customizer = () => {
             results={aiResults}
             selectedImageId={selectedAiImageId}
             onSelectImage={handleSelectAiImage}
+            onApply={handleApplySelectedImage}
             activeAiType={activeAiType}
             activeAiTypeLabel={activeAiLabel}
             currentType={currentAiType}
@@ -337,7 +321,7 @@ const Customizer = () => {
 
     const { placement, coverage } = decodeAiType(type);
 
-    const streamUrl = `${API_BASE_URL}/v1/images/generations/stream/${sessionId}`;
+    const streamUrl = `${API_BASE_URL}/api/v1/images/generations/stream/${sessionId}`;
 
     if (aiStreamRef.current) {
       aiStreamRef.current.close();
@@ -486,7 +470,7 @@ const Customizer = () => {
     });
 
     try {
-      const response = await fetch(`${API_BASE_URL}/v1/images/generations`, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/images/generations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -495,21 +479,7 @@ const Customizer = () => {
         }),
       });
 
-      const contentType = response.headers.get("content-type") || "";
-      let data = null;
-      if (contentType.includes("application/json")) {
-        data = await response.json();
-      } else {
-        const text = await response.text();
-        if (!response.ok) {
-          throw new Error(
-            text?.trim()
-              ? text.trim().slice(0, 200)
-              : `HTTP error! Status: ${response.status}`,
-          );
-        }
-        throw new Error("Unexpected response format from the AI service.");
-      }
+      const data = await response.json();
 
       if (!response.ok) {
         throw new Error(
@@ -561,6 +531,45 @@ const Customizer = () => {
 
       alert(error instanceof Error ? error.message : String(error));
     }
+  };
+
+  const handleApplySelectedImage = () => {
+    if (!activeAiType) {
+      alert("Select which decal to apply the image to.");
+      return;
+    }
+
+    if (aiStreamRef.current) {
+      aiStreamRef.current.close();
+      aiStreamRef.current = null;
+    }
+
+    const selectedImage =
+      aiResults.find((item) => item.id === selectedAiImageId) || aiResults[0];
+
+    if (!selectedImage) {
+      alert("No AI image selected.");
+      return;
+    }
+
+    const source = selectedImage.base64 || selectedImage.url;
+
+    if (!source) {
+      alert("Selected AI image does not include usable image data.");
+      return;
+    }
+
+    if (activeAiType) {
+      const entry = aiImageCacheRef.current.get(activeAiType) || {};
+      aiImageCacheRef.current.set(activeAiType, {
+        ...entry,
+        selectedImageId: selectedAiImageId || selectedImage.id,
+      });
+    }
+
+    handleDecals(activeAiType, source);
+    setGeneratingImg(false);
+    setActiveEditorTab("");
   };
 
   const handleDecals = (type, result) => {
