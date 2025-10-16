@@ -249,18 +249,56 @@ const Customizer = () => {
     }
   };
 
-  const handleSelectAiImage = (imageId) => {
+  const normalizeImageSource = (image) => {
+    if (!image) return "";
+
+    const base64 = typeof image.base64 === "string" ? image.base64.trim() : "";
+    const url = typeof image.url === "string" ? image.url.trim() : "";
+
+    if (base64) {
+      if (base64.startsWith("data:")) {
+        return base64;
+      }
+      const mimeType =
+        typeof image.mimeType === "string" && image.mimeType
+          ? image.mimeType
+          : "image/png";
+      return `data:${mimeType};base64,${base64}`;
+    }
+
+    if (url) {
+      return url;
+    }
+
+    return "";
+  };
+
+  const handleSelectAiImage = (image) => {
+    if (!image) return;
+
     const cacheKey = activeAiType || encodeAiType(aiPlacement, aiCoverage);
-    setSelectedAiImageId(imageId);
     if (!cacheKey) return;
-    const existing = aiImageCacheRef.current.get(cacheKey) || {};
+
     const { placement, coverage } = decodeAiType(cacheKey);
+    const imageId = image.id ?? null;
+    const source = normalizeImageSource(image);
+
+    setActiveAiType(cacheKey);
+    setAiPlacement(placement);
+    setAiCoverage(coverage);
+    setSelectedAiImageId(imageId);
+
+    const existing = aiImageCacheRef.current.get(cacheKey) || {};
     aiImageCacheRef.current.set(cacheKey, {
       ...existing,
       placement,
       coverage,
       selectedImageId: imageId,
     });
+
+    if (source) {
+      handleDecals(cacheKey, source);
+    }
   };
 
   const generateTabContent = () => {
@@ -552,7 +590,7 @@ const Customizer = () => {
       return;
     }
 
-    const source = selectedImage.base64 || selectedImage.url;
+    const source = normalizeImageSource(selectedImage);
 
     if (!source) {
       alert("Selected AI image does not include usable image data.");
