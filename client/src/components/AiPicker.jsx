@@ -76,7 +76,7 @@ const AiPicker = ({
         type="button"
         key={item.id || `placeholder-${index}`}
         onClick={() => {
-          if (!isPlaceholder) onSelectImage(item.id);
+          if (!isPlaceholder) onSelectImage(item);
         }}
         disabled={isPlaceholder}
         className={`relative aspect-square w-full overflow-hidden rounded-lg border-2 border-zinc-900 transition-all duration-150 ${
