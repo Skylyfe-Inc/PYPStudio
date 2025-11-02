@@ -18,6 +18,7 @@ const Home = React.lazy(() => import("./pages/Home"));
 const Customizer = React.lazy(() => import("./pages/Customizer"));
 const Canvas = React.lazy(() => import("./canvas"));
 const Cart = React.lazy(() => import("./pages/Cart"));
+const Profile = React.lazy(() => import("./pages/Profile"));
 const VendorSignUpPage = React.lazy(() => import("./pages/VendorSignUp"));
 const LoginStudio = React.lazy(() => import("./pages/LoginStudio"));
 const IndividualSignUp = React.lazy(() => import("./pages/IndividualSignUp"));
@@ -67,6 +68,7 @@ function App() {
                                 </>
                             } />
                             <Route path={AppRoutes.Cart.path} element={<Cart />} />
+                            <Route path={AppRoutes.Profile.path} element={<Profile />} />
                         </Route>
                     </Route>
                     {/* Redirect all undefined routed to not found page */}

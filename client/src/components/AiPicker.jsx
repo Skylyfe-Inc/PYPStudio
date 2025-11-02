@@ -22,6 +22,7 @@ const COVERAGE_OPTIONS = [
 ];
 
 const AiPicker = ({
+  mode = "image",
   prompt,
   setPrompt,
   generatingImg,
@@ -37,7 +38,130 @@ const AiPicker = ({
   onPlacementChange = () => {},
   coverage = "logo",
   expectedCount = 6,
+  onMeshySubmit = () => {},
+  meshyLoading = false,
+  meshyTask = null,
+  meshyError = "",
 }) => {
+  if (mode === "meshy") {
+    const disabled = meshyLoading || !prompt?.trim();
+    const normalizedTask =
+      typeof meshyTask === "string"
+        ? { task_id: meshyTask }
+        : meshyTask || {};
+    const taskId =
+      normalizedTask.task_id ||
+      normalizedTask?.data?.task_id ||
+      normalizedTask?.result?.task_id ||
+      normalizedTask?.raw?.task_id ||
+      "—";
+    const status =
+      normalizedTask.status ||
+      normalizedTask?.data?.status ||
+      normalizedTask?.result?.status ||
+      "pending";
+    const assets =
+      normalizedTask.assets ||
+      normalizedTask?.result?.assets ||
+      normalizedTask?.raw?.result?.assets ||
+      [];
+    const downloadUrl =
+      normalizedTask.downloadUrl ||
+      (Array.isArray(assets)
+        ? assets.find((asset) => asset?.url)?.url
+        : undefined);
+
+    return (
+      <div className="aipicker-container">
+        <div className="flex h-full flex-col gap-4">
+          <textarea
+            placeholder="Describe the 3D model you want Meshy to create…"
+            rows={5}
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            className="aipicker-textarea"
+          />
+
+          {meshyError && (
+            <div className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-rose-600">
+              {meshyError}
+            </div>
+          )}
+
+          <CustomButton
+            type="custom"
+            title={meshyLoading ? "Submitting…" : "Generate 3D Preview"}
+            handleClick={onMeshySubmit}
+            disabled={disabled}
+            customStyles={`w-full justify-center text-[12px] font-semibold uppercase tracking-wide border-2 border-zinc-900 rounded-lg py-2 ${
+              meshyLoading
+                ? "bg-zinc-300 text-zinc-500"
+                : disabled
+                  ? "bg-zinc-200 text-zinc-400"
+                  : "bg-indigo-500 text-white hover:bg-indigo-400"
+            }`}
+          />
+
+          <div className="flex flex-1 flex-col gap-3 rounded-xl border-2 border-dashed border-zinc-300 bg-white/90 p-3">
+            {meshyTask ? (
+              <>
+                <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-zinc-600">
+                  <span>Meshy Task Created</span>
+                  <span>Status: {status}</span>
+                </div>
+                <p className="text-xs text-zinc-500">
+                  Task ID:{" "}
+                  <span className="font-semibold text-zinc-700">{taskId}</span>
+                </p>
+                {downloadUrl && (
+                  <a
+                    href={downloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center rounded-full border-2 border-emerald-500 bg-emerald-500 px-4 py-1 text-[11px] font-semibold uppercase tracking-wide text-white transition hover:bg-emerald-400"
+                  >
+                    Download GLB
+                  </a>
+                )}
+                {Array.isArray(assets) && assets.length > 0 && (
+                  <div className="space-y-1 text-[10px] text-zinc-500">
+                    <p className="font-semibold uppercase tracking-wide text-zinc-600">
+                      Assets
+                    </p>
+                    <ul className="space-y-1">
+                      {assets.map((asset, index) => (
+                        <li key={asset?.url || index}>
+                          <a
+                            href={asset?.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-indigo-600 hover:underline"
+                          >
+                            {asset?.type || "asset"} {index + 1}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <pre className="flex-1 overflow-auto rounded-lg bg-zinc-950 px-3 py-2 text-[10px] leading-relaxed text-zinc-100">
+                  {JSON.stringify(normalizedTask.raw ?? normalizedTask, null, 2)}
+                </pre>
+                <p className="text-[10px] text-zinc-500">
+                  Poll the Meshy task status to download the generated GLB once it is ready.
+                </p>
+              </>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+                <span>Describe your model and submit to start a Meshy preview task.</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const hasResults = Array.isArray(results) && results.length > 0;
   const images = Array.isArray(results) ? results : [];
   const currentConfigType =

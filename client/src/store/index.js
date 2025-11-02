@@ -32,6 +32,7 @@ const state = proxy({
   activeDecalKey: "logo",
   manualRotation: { x: 0, y: 0, z: 0 },
   activeModel: "shirt",
+  cartItems: [],
 });
 
 // Exporting the reactive state object
