@@ -4,10 +4,14 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useSnapshot } from "valtio";
 import { useNavigate, useLocation } from "react-router-dom";
 import state from "../store";
-import { reader } from "../config/config/helpers";
+import { reader, captureCanvasImage, downloadCanvasToImage } from "../config/config/helpers";
 
 import cartLogo from "../assets/assets/cartLogo.png";
 import downloadIcon from "../assets/assets/download.png";
+import shirtIcon3D from "../assets/assets/3d-shirt-icon.png";
+import hoodieIcon3D from "../assets/assets/3d-hoodie-icon.png";
+import bootIcon3D from "../assets/assets/3d-boot-icon.png";
+import sneakerIcon3D from "../assets/assets/3d-sneaker-icon.png";
 
 import {
   EditorTabs,
@@ -55,6 +59,53 @@ const ACTIVE_DECAL_LABELS = {
   full: "Front Full",
   backLogo: "Back Logo",
   backFull: "Back Full",
+};
+
+const MODEL_DISPLAY_NAMES = {
+  shirt: "Custom Shirt",
+  hoodie: "Custom Hoodie",
+  boot: "Custom Boot",
+  sneaker: "Custom Sneaker",
+};
+
+const MODEL_BASE_PRICING = {
+  shirt: 44.99,
+  hoodie: 64.99,
+  boot: 84.99,
+  sneaker: 74.99,
+};
+
+const MODEL_PLACEHOLDERS = {
+  shirt: shirtIcon3D,
+  hoodie: hoodieIcon3D,
+  boot: bootIcon3D,
+  sneaker: sneakerIcon3D,
+};
+
+const computeDesignSignature = (snap) => {
+  const safeValue = (value) =>
+    typeof value === "string" ? value : value ? JSON.stringify(value) : "";
+
+  const toggles = {
+    isLogoTexture: !!snap.isLogoTexture,
+    isFullTexture: !!snap.isFullTexture,
+    isBackLogoTexture: !!snap.isBackLogoTexture,
+    isBackFullTexture: !!snap.isBackFullTexture,
+  };
+
+  const decals = {
+    logo: safeValue(snap.logoDecal),
+    full: safeValue(snap.fullDecal),
+    backLogo: safeValue(snap.backLogoDecal),
+    backFull: safeValue(snap.backFullDecal),
+  };
+
+  return JSON.stringify({
+    model: snap.activeModel || "shirt",
+    color: snap.color || "#000000",
+    toggles,
+    decals,
+  });
 };
 
 const DEFAULT_EXPECTED_AI_COUNT = 6;
@@ -127,7 +178,7 @@ const Customizer = () => {
   // --- existing local UI state ---
   const [file, setFile] = useState("");
   const [prompt, setPrompt] = useState("");
-  const [count, setCount] = useState(0);
+  const [meshPrompt, setMeshPrompt] = useState("");
   const [generatingImg, setGeneratingImg] = useState(false);
   const [aiResults, setAiResults] = useState([]);
   const [selectedAiImageId, setSelectedAiImageId] = useState(null);
@@ -150,7 +201,55 @@ const Customizer = () => {
     hoodie: snap.activeModel === "hoodie",
     boot: snap.activeModel === "boot",
     sneaker: snap.activeModel === "sneaker",
+    meshy: false,
   });
+  const [isMeshyMode, setIsMeshyMode] = useState(false);
+  const [meshyTask, setMeshyTask] = useState(null);
+  const [meshyError, setMeshyError] = useState("");
+  const [meshyLoading, setMeshyLoading] = useState(false);
+  const meshyPollRef = useRef(null);
+  const terminalMeshyStatuses = useMemo(
+    () => ["succeeded", "failed", "canceled", "cancelled", "finished", "ready"],
+    [],
+  );
+
+  const extractMeshyTask = (payload, fallbackStatus = "pending") => {
+    if (!payload) return null;
+
+    if (typeof payload === "string") {
+      return { task_id: payload, status: fallbackStatus };
+    }
+
+    const directTask =
+      payload?.result && typeof payload.result === "object"
+        ? payload.result
+        : payload;
+
+    const taskId =
+      payload?.task_id ||
+      directTask?.task_id ||
+      (typeof payload?.result === "string" ? payload.result : null);
+
+    const status = directTask?.status || payload?.status || fallbackStatus;
+    const nestedResult = directTask?.result || {};
+    const assets =
+      nestedResult?.assets || directTask?.assets || nestedResult?.outputs || [];
+    const downloadUrl =
+      nestedResult?.model_url ||
+      nestedResult?.glb ||
+      (Array.isArray(assets)
+        ? assets.find((asset) => asset?.url && /glb|gltf/i.test(asset?.type || ""))?.url ||
+          assets.find((asset) => asset?.url)?.url
+        : null);
+
+    return {
+      task_id: taskId,
+      status,
+      assets,
+      downloadUrl,
+      raw: payload,
+    };
+  };
 
   // Reset scale when model changes
   const resetDecalTransforms = () => {
@@ -177,6 +276,15 @@ const Customizer = () => {
   useEffect(() => {
     resetDecalTransforms();
   }, [snap.activeModel]);
+
+  useEffect(() => {
+    return () => {
+      if (meshyPollRef.current) {
+        clearInterval(meshyPollRef.current);
+        meshyPollRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -220,11 +328,50 @@ const Customizer = () => {
     navigate("/cart");
   };
 
-  const handleDownload = () => {
-    console.log("Handle Download");
+  const handleProfileNavigation = () => {
+    state.intro = true;
+    navigate("/profile");
+  };
+
+  const handleDownload = async () => {
+    console.debug("[Customizer] Download triggered");
+    const promptMessage =
+      "Choose download quality:\n1 - Standard (current resolution)\n2 - High (2x)\n3 - Ultra (3x)\nYou can also enter a custom scale value (e.g., 1.5).";
+    const response = window.prompt(promptMessage, "1");
+    if (response === null) return;
+
+    const trimmed = response.trim();
+    const quickMap = { "1": 1, "2": 2, "3": 3 };
+    const parsed =
+      quickMap[trimmed] ?? Number.parseFloat(trimmed.replace(/[^0-9.]/g, ""));
+    const multiplier = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+    const limitedMultiplier = Math.min(multiplier, 4); // prevent extreme values
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const fileName = `pyp-design-${timestamp}`;
+
+    console.debug("[Customizer] Requested download scale", {
+      input: trimmed,
+      parsedMultiplier: parsed,
+      appliedMultiplier: limitedMultiplier,
+    });
+
+    const success = await downloadCanvasToImage({
+      multiplier: limitedMultiplier,
+      fileName,
+      mimeType: "image/png",
+    });
+
+    if (!success) {
+      alert("Unable to download the image right now. Please try again.");
+      console.debug("[Customizer] Download failed");
+    } else {
+      console.debug("[Customizer] Download succeeded", { fileName });
+    }
   };
 
   const handleAiPlacementChange = (placement) => {
+    if (isMeshyMode) return;
     if (placement === aiPlacement) return;
     const nextType = encodeAiType(placement, aiCoverage);
     setAiPlacement(placement);
@@ -322,30 +469,39 @@ const Customizer = () => {
       case "filepicker":
         return <FilePicker file={file} setFile={setFile} readFile={readFile} />;
       case "aipicker": {
+        const aiMode = isMeshyMode ? "meshy" : "image";
         const currentAiType = encodeAiType(aiPlacement, aiCoverage);
-        const currentAiLabel =
-          ACTIVE_DECAL_LABELS[currentAiType] || "Front Logo";
-        const activeAiLabel = activeAiType
-          ? ACTIVE_DECAL_LABELS[activeAiType]
-          : currentAiLabel;
+        const currentAiLabel = isMeshyMode
+          ? "Meshy Text to 3D"
+          : ACTIVE_DECAL_LABELS[currentAiType] || "Front Logo";
+        const activeAiLabel = isMeshyMode
+          ? currentAiLabel
+          : activeAiType
+            ? ACTIVE_DECAL_LABELS[activeAiType]
+            : currentAiLabel;
         return (
           <AiPicker
-            prompt={prompt}
-            setPrompt={setPrompt}
-            generatingImg={generatingImg}
+            mode={aiMode}
+            prompt={aiMode === "meshy" ? meshPrompt : prompt}
+            setPrompt={aiMode === "meshy" ? setMeshPrompt : setPrompt}
+            generatingImg={aiMode === "meshy" ? meshyLoading : generatingImg}
             handleSubmit={handleSubmit}
-            results={aiResults}
-            selectedImageId={selectedAiImageId}
-            onSelectImage={handleSelectAiImage}
-            onApply={handleApplySelectedImage}
-            activeAiType={activeAiType}
+            results={aiMode === "meshy" ? [] : aiResults}
+            selectedImageId={aiMode === "meshy" ? null : selectedAiImageId}
+            onSelectImage={aiMode === "meshy" ? undefined : handleSelectAiImage}
+            onApply={aiMode === "meshy" ? undefined : handleApplySelectedImage}
+            activeAiType={aiMode === "meshy" ? null : activeAiType}
             activeAiTypeLabel={activeAiLabel}
-            currentType={currentAiType}
+            currentType={aiMode === "meshy" ? null : currentAiType}
             currentTypeLabel={currentAiLabel}
             placement={aiPlacement}
             onPlacementChange={handleAiPlacementChange}
             coverage={aiCoverage}
-            expectedCount={aiExpectedCount}
+            expectedCount={aiMode === "meshy" ? 0 : aiExpectedCount}
+            onMeshySubmit={aiMode === "meshy" ? handleMeshySubmit : undefined}
+            meshyLoading={meshyLoading}
+            meshyTask={meshyTask}
+            meshyError={meshyError}
           />
         );
       }
@@ -439,6 +595,99 @@ const Customizer = () => {
       aiStreamRef.current = null;
     });
   };
+
+  const handleMeshySubmit = async () => {
+    const trimmedPrompt = (meshPrompt || "").trim();
+    if (!trimmedPrompt) {
+      alert("Please describe the 3D model you want to generate.");
+      return;
+    }
+
+    setMeshyError("");
+    if (meshyPollRef.current) {
+      clearInterval(meshyPollRef.current);
+      meshyPollRef.current = null;
+    }
+    setMeshyTask(null);
+    setMeshyLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/meshy/text-to-3d`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: trimmedPrompt }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || data?.success === false) {
+        const message = data?.message || `Request failed with status ${response.status}`;
+        throw new Error(message);
+      }
+
+      const normalized = extractMeshyTask(data?.result ?? data, "pending");
+      setMeshyTask(normalized);
+    } catch (error) {
+      setMeshyError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMeshyLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const taskId = meshyTask?.task_id;
+    if (!taskId) {
+      if (meshyPollRef.current) {
+        clearInterval(meshyPollRef.current);
+        meshyPollRef.current = null;
+      }
+      return;
+    }
+
+    const currentStatus = (meshyTask?.status || "").toLowerCase();
+    if (terminalMeshyStatuses.includes(currentStatus)) {
+      if (meshyPollRef.current) {
+        clearInterval(meshyPollRef.current);
+        meshyPollRef.current = null;
+      }
+      return;
+    }
+
+    const pollTaskStatus = async () => {
+      try {
+        const resp = await fetch(
+          `${API_BASE_URL}/api/v1/meshy/text-to-3d/${encodeURIComponent(taskId)}`,
+        );
+        const data = await resp.json();
+        if (!resp.ok || data?.success === false) {
+          throw new Error(data?.message || `Status request failed with ${resp.status}`);
+        }
+        const normalized = extractMeshyTask(data?.result ?? data, meshyTask?.status);
+        if (normalized) {
+          setMeshyTask((prev) => ({
+            ...(prev || {}),
+            ...normalized,
+          }));
+        }
+      } catch (error) {
+        console.error("Meshy status polling failed", error);
+        setMeshyError((prev) => prev || (error instanceof Error ? error.message : String(error)));
+      }
+    };
+
+    pollTaskStatus();
+
+    if (!meshyPollRef.current) {
+      meshyPollRef.current = setInterval(pollTaskStatus, 5000);
+    }
+
+    return () => {
+      if (meshyPollRef.current) {
+        clearInterval(meshyPollRef.current);
+        meshyPollRef.current = null;
+      }
+    };
+  }, [meshyTask?.task_id, meshyTask?.status, terminalMeshyStatuses]);
 
   // ----- AI image submit -----
   const handleSubmit = async (type, options = {}) => {
@@ -640,13 +889,28 @@ const Customizer = () => {
   };
 
   const handleActiveModelTab = (tabName) => {
+    if (tabName === "meshy") {
+      setIsMeshyMode(true);
+      setActiveModelTab((prev) => {
+        const keys = new Set([...Object.keys(prev), "meshy"]);
+        const updated = {};
+        keys.forEach((key) => {
+          updated[key] = key === "meshy";
+        });
+        return updated;
+      });
+      return;
+    }
+
+    setIsMeshyMode(false);
     state.activeModel = tabName;
     setActiveModelTab((prev) => {
-      const updated = Object.keys(prev).reduce((acc, key) => {
-        acc[key] = key === tabName;
-        return acc;
-      }, {});
-      return { ...prev, ...updated };
+      const keys = new Set([...Object.keys(prev), "meshy"]);
+      const updated = {};
+      keys.forEach((key) => {
+        updated[key] = key === tabName ? true : false;
+      });
+      return updated;
     });
   };
 
@@ -657,9 +921,81 @@ const Customizer = () => {
     });
   };
 
+  const cartCount = Array.isArray(snap.cartItems)
+    ? snap.cartItems.reduce(
+        (sum, item) =>
+          sum + Math.max(0, typeof item.quantity === "number" ? item.quantity : 1),
+        0,
+      )
+    : 0;
+
   const handleAddCartClick = () => {
-    setCount((prev) => prev + 1);
+    const modelKey = snap.activeModel || "shirt";
+    const label = MODEL_DISPLAY_NAMES[modelKey] || "Custom Design";
+    const price = MODEL_BASE_PRICING[modelKey] || MODEL_BASE_PRICING.shirt;
+    const placeholder = MODEL_PLACEHOLDERS[modelKey] || shirtIcon3D;
+    const capturedImage = captureCanvasImage();
+    const designSignature = computeDesignSignature(snap);
+    const id = typeof crypto !== "undefined" && crypto.randomUUID
+      ? `cart-${crypto.randomUUID()}`
+      : `cart-${Date.now()}`;
+
+    const existing = Array.isArray(state.cartItems) ? [...state.cartItems] : [];
+    const matchIndex = existing.findIndex(
+      (entry) => entry.designSignature === designSignature,
+    );
+
+    if (matchIndex !== -1) {
+      const matchedItem = existing[matchIndex];
+      const nextQuantity =
+        Math.max(1, typeof matchedItem.quantity === "number" ? matchedItem.quantity : 1) +
+        1;
+      const nextThumbnail = capturedImage || matchedItem.thumbnail || placeholder;
+      existing[matchIndex] = {
+        ...matchedItem,
+        quantity: nextQuantity,
+        thumbnail: nextThumbnail,
+      };
+      state.cartItems = existing;
+      return;
+    }
+
+    const newItem = {
+      id,
+      model: modelKey,
+      name: label,
+      price,
+      quantity: 1,
+      colorHex: snap.color,
+      createdAt: new Date().toISOString(),
+      thumbnail: capturedImage || placeholder,
+      placeholder,
+      decals: {
+        logo: snap.logoDecal,
+        full: snap.fullDecal,
+        backLogo: snap.backLogoDecal,
+        backFull: snap.backFullDecal,
+      },
+      toggles: {
+        isLogoTexture: snap.isLogoTexture,
+        isFullTexture: snap.isFullTexture,
+        isBackLogoTexture: snap.isBackLogoTexture,
+        isBackFullTexture: snap.isBackFullTexture,
+      },
+      designSignature,
+    };
+
+    state.cartItems = [...existing, newItem];
   };
+
+  const isFloatingPanelActive =
+    activeEditorTab === "aipicker" || activeEditorTab === "filepicker";
+  const mobileCartWrapperClassName = [
+    "md:hidden fixed left-1/2 -translate-x-1/2 bottom-20",
+    isFloatingPanelActive
+      ? "-z-10 pointer-events-none"
+      : "z-30 pointer-events-auto",
+  ].join(" ");
 
   return (
     <AnimatePresence>
@@ -700,7 +1036,7 @@ const Customizer = () => {
                 handleClick={handleCartNavigation}
               />
               <span className="absolute -top-2 -right-2 bg-teal-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                {count}
+                {cartCount}
               </span>
             </div>
           </div>
@@ -739,6 +1075,30 @@ const Customizer = () => {
             />
           </div>
 
+          {/* Profile - desktop */}
+          <div className="hidden md:flex fixed top-5 left-5 z-30">
+            <button
+              type="button"
+              onClick={handleProfileNavigation}
+              aria-label="Profile"
+              className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-zinc-900 bg-white/90 text-zinc-900 shadow-md transition-colors hover:bg-zinc-100"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-6 w-6"
+              >
+                <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" />
+                <path d="M4 20a8 8 0 0 1 16 0" />
+              </svg>
+            </button>
+          </div>
+
           {/* Mobile action navbar */}
           <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 border-t border-gray-200 shadow-lg z-50">
             <div className="flex h-16">
@@ -774,9 +1134,9 @@ const Customizer = () => {
                     alt="Add to Cart"
                     className="h-6 w-6 object-contain"
                   />
-                  {count > 0 && (
+                  {cartCount > 0 && (
                     <span className="absolute -top-1 -right-2 inline-flex items-center justify-center h-4 min-w-[1rem] rounded-full bg-teal-500 px-1 text-[10px] font-bold text-white">
-                      {count}
+                      {cartCount}
                     </span>
                   )}
                 </div>
@@ -793,6 +1153,27 @@ const Customizer = () => {
                 className="h-6 w-6 object-contain"
                 />
                 <span>Download</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleProfileNavigation}
+                className="flex flex-1 flex-col items-center justify-center gap-1 text-xs font-semibold text-gray-700"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-6 w-6"
+                  aria-hidden="true"
+                >
+                  <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" />
+                  <path d="M4 20a8 8 0 0 1 16 0" />
+                </svg>
+                <span>Profile</span>
               </button>
               <button
                 type="button"
@@ -846,7 +1227,7 @@ const Customizer = () => {
           </div>
 
           {/* Add to Cart - mobile */}
-          <div className="md:hidden fixed left-1/2 -translate-x-1/2 bottom-20 z-40">
+          <div className={mobileCartWrapperClassName}>
             <CustomButton
               type="filled"
               title="Add to Cart"
