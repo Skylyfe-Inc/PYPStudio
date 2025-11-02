@@ -7,6 +7,7 @@ const AppRoutes = {
   Canvas: { path: "/canvas" },
   NotFound: { path: "*" },
   Cart: { path: "/cart" },
+  Profile: { path: "/profile" },
   VendorSignUpPage: { path: "/VendorSignUpPage" },
   WelcomeAiStudio: { path: "/WelcomeAiStudio" },
   IndividualSignUp: { path: "/IndividualSignUp" },
