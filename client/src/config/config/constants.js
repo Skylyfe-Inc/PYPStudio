@@ -29,6 +29,11 @@ export const CarouselTabs = [
     name: "sneaker",
     icon: sneakerIcon3D,
   },
+  {
+    name: "meshy",
+    icon: ai,
+    label: "Text to 3D",
+  },
 ];
 
 

@@ -8,6 +8,7 @@ import { getToken } from "./config/config/helpers";
 import state from "./store";
 import Layout from "./pages/Layout";
 import { useSnapshot } from "valtio";
+import AccessGate from "./components/AccessGate";
 
 // Using Lazy loading so as to improve the app performance. Only load pages when ever needed.
 const NotFound = React.lazy(() => import("./pages/NotFound"));
@@ -17,6 +18,7 @@ const Home = React.lazy(() => import("./pages/Home"));
 const Customizer = React.lazy(() => import("./pages/Customizer"));
 const Canvas = React.lazy(() => import("./canvas"));
 const Cart = React.lazy(() => import("./pages/Cart"));
+const Profile = React.lazy(() => import("./pages/Profile"));
 const VendorSignUpPage = React.lazy(() => import("./pages/VendorSignUp"));
 const LoginStudio = React.lazy(() => import("./pages/LoginStudio"));
 const IndividualSignUp = React.lazy(() => import("./pages/IndividualSignUp"));
@@ -34,6 +36,7 @@ function App() {
 
     return (
         <Suspense fallback={<Loading />}>
+            <AccessGate>
             <main className="app transtion-allease-in">
                 <Toast /> {/*Toast Notification Component to view toast */}
                 {/* Routes setup */}
@@ -65,12 +68,14 @@ function App() {
                                 </>
                             } />
                             <Route path={AppRoutes.Cart.path} element={<Cart />} />
+                            <Route path={AppRoutes.Profile.path} element={<Profile />} />
                         </Route>
                     </Route>
                     {/* Redirect all undefined routed to not found page */}
                     <Route path="*" element={<NotFound />} />
                 </Routes>
             </main>
+            </AccessGate>
         </Suspense>
     )
 }
