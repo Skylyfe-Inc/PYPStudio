@@ -1,6 +1,7 @@
 import express from "express";
 import * as dotenv from 'dotenv';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 
 import dalleRoutes from './routes/dalle.routes.js'; 
 import authRoutes from './routes/auth.routes.js';
@@ -10,8 +11,12 @@ import meshyRoutes from './routes/meshy.routes.js';
 dotenv.config(); // Loads environment variables from .env file
 
 const app = express(); // Creates Express application
-app.use(cors()); // Enables Cross-Origin Resource Sharing
+app.use(cors({
+    origin: process.env.CLIENT_URL || 'http://localhost:5173', // Allow your client URL
+    credentials: true // Allow cookies to be sent
+})); // Enables Cross-Origin Resource Sharing
 app.use(express.json({limit: "50mb"})) // Sets the limit of the JSON body to 50 MB
+app.use(cookieParser()); // Parse cookies
 
 app.options('/generate-image', cors()); // Enable CORS for the OPTIONS request
 

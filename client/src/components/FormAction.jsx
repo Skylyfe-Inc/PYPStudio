@@ -1,19 +1,16 @@
 // FormAction.jsx
 import PropTypes from "prop-types";
 
-export default function FormAction({
-  type = "Button",
-  action = "submit",
-  text,
-  disabled,
-}) {
-  if (type !== "Button") return null;
-
+export default function FormAction({ text, disabled }) {
   return (
     <button
-      type={action}                          // <-- "submit"
+      type="submit"   // 🔥 ALWAYS submit
       disabled={disabled}
-      className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-gray-500 hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 mt-10 disabled:opacity-60"
+      className="group relative w-full flex justify-center py-2 px-4
+                 text-sm font-medium rounded-md text-white
+                 bg-gray-500 hover:bg-yellow-600
+                 focus:outline-none focus:ring-2 focus:ring-offset-2
+                 mt-10 disabled:opacity-60"
     >
       {text}
     </button>
