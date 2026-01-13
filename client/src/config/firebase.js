@@ -17,10 +17,19 @@ const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 
-// Analytics should be optional (prevents errors in unsupported environments)
-export const analytics =
-  typeof window !== "undefined"
-    ? await (async () => (await isSupported()) ? getAnalytics(app) : null)()
-    : null;
+// Initialize Analytics lazily without top-level await
+let analyticsInstance = null;
+
+export async function getAnalyticsInstance() {
+  if (analyticsInstance) return analyticsInstance;
+  if (typeof window === "undefined") return null;
+  try {
+    const supported = await isSupported();
+    analyticsInstance = supported ? getAnalytics(app) : null;
+    return analyticsInstance;
+  } catch {
+    return null;
+  }
+}
 
 export default app;
