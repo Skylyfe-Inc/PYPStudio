@@ -109,7 +109,11 @@ const computeDesignSignature = (snap) => {
 };
 
 const DEFAULT_EXPECTED_AI_COUNT = 6;
-const API_BASE_URL = "http://localhost:8080";
+import config from "../config/config/config.js";
+
+const mode = import.meta.env.MODE || "development";
+const API_BASE_URL =
+  config[mode]?.backendUrl || config.development.backendUrl;
 
 const AI_TYPE_DETAILS = {
   logo: { placement: "front", coverage: "logo" },
