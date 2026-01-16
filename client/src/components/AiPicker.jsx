@@ -1,4 +1,5 @@
 import CustomButton from "./CustomButton";
+import MeshyPreview from "./MeshyPreview";
 
 const TYPE_MAP = {
   front: {
@@ -52,6 +53,13 @@ const AiPicker = ({
   setMeshySymmetry = () => {},
   meshyPoseMode = "",
   setMeshyPoseMode = () => {},
+  meshyTexturePrompt = "",
+  setMeshyTexturePrompt = () => {},
+  meshyTextureImageUrl = "",
+  setMeshyTextureImageUrl = () => {},
+  meshyEnablePbr = true,
+  setMeshyEnablePbr = () => {},
+  onMeshyRefine = () => {},
 }) => {
   if (mode === "meshy") {
     const disabled = meshyLoading || !prompt?.trim();
@@ -64,12 +72,24 @@ const AiPicker = ({
       normalizedTask?.data?.task_id ||
       normalizedTask?.result?.task_id ||
       normalizedTask?.raw?.task_id ||
+      normalizedTask?.id ||
+      normalizedTask?.data?.id ||
+      normalizedTask?.result?.id ||
+      normalizedTask?.raw?.id ||
       "—";
     const status =
       normalizedTask.status ||
       normalizedTask?.data?.status ||
       normalizedTask?.result?.status ||
       "pending";
+    const progressRaw =
+      normalizedTask.progress ||
+      normalizedTask?.data?.progress ||
+      normalizedTask?.result?.progress ||
+      0;
+    const progressValue = Math.max(0, Math.min(100, Number(progressRaw) || 0));
+    const canRefine =
+      Boolean(taskId) && String(status).toLowerCase() === "succeeded";
     const assets =
       normalizedTask.assets ||
       normalizedTask?.result?.assets ||
@@ -80,6 +100,10 @@ const AiPicker = ({
       (Array.isArray(assets)
         ? assets.find((asset) => asset?.url)?.url
         : undefined);
+    const previewUrl = downloadUrl;
+    const taskStatus = String(status || "").toLowerCase();
+    const isMeshyComplete =
+      taskStatus === "succeeded" || taskStatus === "success";
 
     return (
       <div className="aipicker-container aipicker-meshy">
@@ -92,102 +116,171 @@ const AiPicker = ({
             className="aipicker-textarea"
           />
 
-          <div className="grid gap-3 rounded-xl border-2 border-zinc-200 bg-white/90 p-3 text-xs text-zinc-600">
-            <label className="flex flex-col gap-1">
-              <span className="font-semibold uppercase tracking-wide text-zinc-500">
-                Art style
-              </span>
-              <select
-                value={meshyStyle}
-                onChange={(event) => setMeshyStyle(event.target.value)}
-                className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-700"
-              >
-                <option value="realistic">Realistic</option>
-                <option value="sculpture">Sculpture</option>
-              </select>
-            </label>
+          <div className="grid gap-4 md:grid-cols-[1.1fr_0.9fr]">
+            <div className="flex flex-col gap-4">
+              <div className="grid gap-3 rounded-xl border-2 border-zinc-200 bg-white/90 p-3 text-xs text-zinc-600">
+                <label className="flex flex-col gap-1">
+                  <span className="font-semibold uppercase tracking-wide text-zinc-500">
+                    Art style
+                  </span>
+                  <select
+                    value={meshyStyle}
+                    onChange={(event) => setMeshyStyle(event.target.value)}
+                    className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-700"
+                  >
+                    <option value="realistic">Realistic</option>
+                    <option value="sculpture">Sculpture</option>
+                  </select>
+                </label>
 
-            <label className="flex flex-col gap-1">
-              <span className="font-semibold uppercase tracking-wide text-zinc-500">
-                Topology
-              </span>
-              <select
-                value={meshyTopology}
-                onChange={(event) => setMeshyTopology(event.target.value)}
-                className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-700"
-              >
-                <option value="triangle">Triangle</option>
-                <option value="quad">Quad</option>
-              </select>
-            </label>
+                <label className="flex flex-col gap-1">
+                  <span className="font-semibold uppercase tracking-wide text-zinc-500">
+                    Topology
+                  </span>
+                  <select
+                    value={meshyTopology}
+                    onChange={(event) => setMeshyTopology(event.target.value)}
+                    className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-700"
+                  >
+                    <option value="triangle">Triangle</option>
+                    <option value="quad">Quad</option>
+                  </select>
+                </label>
 
-            <label className="flex flex-col gap-1">
-              <span className="font-semibold uppercase tracking-wide text-zinc-500">
-                Target polycount
-              </span>
-              <input
-                type="number"
-                min={100}
-                max={300000}
-                step={100}
-                value={meshyPolycount}
-                onChange={(event) =>
-                  setMeshyPolycount(Number(event.target.value || 0))
-                }
-                className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-700"
+                <label className="flex flex-col gap-1">
+                  <span className="font-semibold uppercase tracking-wide text-zinc-500">
+                    Target polycount
+                  </span>
+                  <input
+                    type="number"
+                    min={100}
+                    max={300000}
+                    step={100}
+                    value={meshyPolycount}
+                    onChange={(event) =>
+                      setMeshyPolycount(Number(event.target.value || 0))
+                    }
+                    className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-700"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1">
+                  <span className="font-semibold uppercase tracking-wide text-zinc-500">
+                    Symmetry
+                  </span>
+                  <select
+                    value={meshySymmetry}
+                    onChange={(event) => setMeshySymmetry(event.target.value)}
+                    className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-700"
+                  >
+                    <option value="auto">Auto</option>
+                    <option value="on">On</option>
+                    <option value="off">Off</option>
+                  </select>
+                </label>
+
+                <label className="flex flex-col gap-1">
+                  <span className="font-semibold uppercase tracking-wide text-zinc-500">
+                    Pose mode
+                  </span>
+                  <select
+                    value={meshyPoseMode}
+                    onChange={(event) => setMeshyPoseMode(event.target.value)}
+                    className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-700"
+                  >
+                    <option value="">None</option>
+                    <option value="a-pose">A-pose</option>
+                    <option value="t-pose">T-pose</option>
+                  </select>
+                </label>
+              </div>
+
+              {meshyError && (
+                <div className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-rose-600">
+                  {meshyError}
+                </div>
+              )}
+
+              <CustomButton
+                type="custom"
+                title={meshyLoading ? "Submitting…" : "Generate 3D Preview"}
+                handleClick={onMeshySubmit}
+                disabled={disabled}
+                customStyles={`w-full justify-center text-[12px] font-semibold uppercase tracking-wide border-2 border-zinc-900 rounded-lg py-2 ${
+                  meshyLoading
+                    ? "bg-zinc-300 text-zinc-500"
+                    : disabled
+                      ? "bg-zinc-200 text-zinc-400"
+                      : "bg-indigo-500 text-white hover:bg-indigo-400"
+                }`}
               />
-            </label>
-
-            <label className="flex flex-col gap-1">
-              <span className="font-semibold uppercase tracking-wide text-zinc-500">
-                Symmetry
-              </span>
-              <select
-                value={meshySymmetry}
-                onChange={(event) => setMeshySymmetry(event.target.value)}
-                className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-700"
-              >
-                <option value="auto">Auto</option>
-                <option value="on">On</option>
-                <option value="off">Off</option>
-              </select>
-            </label>
-
-            <label className="flex flex-col gap-1">
-              <span className="font-semibold uppercase tracking-wide text-zinc-500">
-                Pose mode
-              </span>
-              <select
-                value={meshyPoseMode}
-                onChange={(event) => setMeshyPoseMode(event.target.value)}
-                className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-700"
-              >
-                <option value="">None</option>
-                <option value="a-pose">A-pose</option>
-                <option value="t-pose">T-pose</option>
-              </select>
-            </label>
-          </div>
-
-          {meshyError && (
-            <div className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-rose-600">
-              {meshyError}
             </div>
-          )}
 
-          <CustomButton
-            type="custom"
-            title={meshyLoading ? "Submitting…" : "Generate 3D Preview"}
-            handleClick={onMeshySubmit}
-            disabled={disabled}
-            customStyles={`w-full justify-center text-[12px] font-semibold uppercase tracking-wide border-2 border-zinc-900 rounded-lg py-2 ${
-              meshyLoading
-                ? "bg-zinc-300 text-zinc-500"
-                : disabled
-                  ? "bg-zinc-200 text-zinc-400"
-                  : "bg-indigo-500 text-white hover:bg-indigo-400"
-            }`}
-          />
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                <span>Preview</span>
+                <span>{previewUrl ? "Meshy GLB" : "Sample model"}</span>
+              </div>
+              <MeshyPreview
+                modelUrl={previewUrl}
+                hasMeshyModel={Boolean(previewUrl)}
+              />
+              {!previewUrl && (
+                <p className="text-xs text-zinc-500">
+                  Generate a preview to see the Meshy model here.
+                </p>
+              )}
+              <div className="rounded-xl border border-zinc-200 bg-white/90 p-3 text-xs text-zinc-600">
+                <p className="font-semibold uppercase tracking-wide text-zinc-500">
+                  Texture refine
+                </p>
+                <label className="mt-2 flex flex-col gap-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                    Texture prompt
+                  </span>
+                  <textarea
+                    rows={3}
+                    value={meshyTexturePrompt}
+                    onChange={(event) => setMeshyTexturePrompt(event.target.value)}
+                    className="w-full resize-none rounded-lg border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-700"
+                    placeholder="Describe the texture style..."
+                  />
+                </label>
+                <label className="mt-2 flex flex-col gap-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                    Texture image URL (optional)
+                  </span>
+                  <input
+                    type="url"
+                    value={meshyTextureImageUrl}
+                    onChange={(event) => setMeshyTextureImageUrl(event.target.value)}
+                    className="w-full rounded-lg border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-700"
+                    placeholder="https://..."
+                  />
+                </label>
+                <label className="mt-2 flex items-center gap-2 text-xs text-zinc-600">
+                  <input
+                    type="checkbox"
+                    checked={meshyEnablePbr}
+                    onChange={(event) => setMeshyEnablePbr(event.target.checked)}
+                  />
+                  Enable PBR textures
+                </label>
+                <button
+                  type="button"
+                  onClick={() => onMeshyRefine(taskId)}
+                  disabled={!canRefine}
+                  className={`mt-3 w-full rounded-full px-3 py-2 text-[11px] font-semibold uppercase tracking-wide transition ${
+                    canRefine
+                      ? "bg-slate-900 text-white hover:bg-slate-800"
+                      : "cursor-not-allowed bg-slate-200 text-slate-400"
+                  }`}
+                >
+                  Refine with textures
+                </button>
+              </div>
+            </div>
+          </div>
 
           <div className="flex flex-1 flex-col gap-3 rounded-xl border-2 border-dashed border-zinc-300 bg-white/90 p-3">
             {meshyTask ? (
@@ -200,6 +293,18 @@ const AiPicker = ({
                   Task ID:{" "}
                   <span className="font-semibold text-zinc-700">{taskId}</span>
                 </p>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                    <span>Progress</span>
+                    <span>{progressValue}%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full border border-zinc-300 bg-zinc-100">
+                    <div
+                      className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                      style={{ width: `${progressValue}%` }}
+                    />
+                  </div>
+                </div>
                 {downloadUrl && (
                   <a
                     href={downloadUrl}
@@ -231,9 +336,6 @@ const AiPicker = ({
                     </ul>
                   </div>
                 )}
-                <pre className="flex-1 overflow-auto rounded-lg bg-zinc-950 px-3 py-2 text-[10px] leading-relaxed text-zinc-100">
-                  {JSON.stringify(normalizedTask.raw ?? normalizedTask, null, 2)}
-                </pre>
                 <p className="text-[10px] text-zinc-500">
                   Poll the Meshy task status to download the generated GLB once it is ready.
                 </p>

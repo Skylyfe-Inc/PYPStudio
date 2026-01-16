@@ -215,6 +215,9 @@ const Customizer = () => {
   const [meshyPolycount, setMeshyPolycount] = useState(30000);
   const [meshySymmetry, setMeshySymmetry] = useState("auto");
   const [meshyPoseMode, setMeshyPoseMode] = useState("");
+  const [meshyTexturePrompt, setMeshyTexturePrompt] = useState("");
+  const [meshyTextureImageUrl, setMeshyTextureImageUrl] = useState("");
+  const [meshyEnablePbr, setMeshyEnablePbr] = useState(true);
   const aiStreamRef = useRef(null);
   const aiImageCacheRef = useRef(new Map());
   const editorTabsRef = useRef(null);
@@ -259,6 +262,8 @@ const Customizer = () => {
     const taskId =
       payload?.task_id ||
       directTask?.task_id ||
+      payload?.id ||
+      directTask?.id ||
       (typeof payload?.result === "string" ? payload.result : null);
 
     const status = directTask?.status || payload?.status || fallbackStatus;
@@ -268,6 +273,8 @@ const Customizer = () => {
     const downloadUrl =
       nestedResult?.model_url ||
       nestedResult?.glb ||
+      nestedResult?.model_urls?.glb ||
+      directTask?.model_urls?.glb ||
       (Array.isArray(assets)
         ? assets.find((asset) => asset?.url && /glb|gltf/i.test(asset?.type || ""))?.url ||
           assets.find((asset) => asset?.url)?.url
@@ -795,6 +802,13 @@ const Customizer = () => {
             setMeshySymmetry={setMeshySymmetry}
             meshyPoseMode={meshyPoseMode}
             setMeshyPoseMode={setMeshyPoseMode}
+            meshyTexturePrompt={meshyTexturePrompt}
+            setMeshyTexturePrompt={setMeshyTexturePrompt}
+            meshyTextureImageUrl={meshyTextureImageUrl}
+            setMeshyTextureImageUrl={setMeshyTextureImageUrl}
+            meshyEnablePbr={meshyEnablePbr}
+            setMeshyEnablePbr={setMeshyEnablePbr}
+            onMeshyRefine={handleMeshyRefine}
             meshyLoading={meshyLoading}
             meshyTask={meshyTask}
             meshyError={meshyError}
@@ -918,6 +932,42 @@ const Customizer = () => {
           target_polycount: meshyPolycount,
           symmetry_mode: meshySymmetry,
           pose_mode: meshyPoseMode,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || data?.success === false) {
+        const message = data?.message || `Request failed with status ${response.status}`;
+        throw new Error(message);
+      }
+
+      const normalized = extractMeshyTask(data?.result ?? data, "pending");
+      setMeshyTask(normalized);
+    } catch (error) {
+      setMeshyError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMeshyLoading(false);
+    }
+  };
+
+  const handleMeshyRefine = async (taskId) => {
+    if (!taskId) {
+      setMeshyError("Meshy task ID is required to refine.");
+      return;
+    }
+    setMeshyError("");
+    setMeshyLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/meshy/text-to-3d/refine`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          preview_task_id: taskId,
+          texture_prompt: meshyTexturePrompt,
+          texture_image_url: meshyTextureImageUrl || undefined,
+          enable_pbr: meshyEnablePbr,
         }),
       });
 
