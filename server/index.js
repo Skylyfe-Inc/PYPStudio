@@ -13,8 +13,22 @@ import ordersRoutes from './routes/orders.routes.js';
 dotenv.config(); // Loads environment variables from .env file
 
 const app = express(); // Creates Express application
+const allowedOrigins = [
+    process.env.CLIENT_URL,
+    process.env.CLIENT_URL_ALT,
+    'http://localhost:5173',
+    'https://www.placeyourprintstudio.com',
+    'https://placeyourprintstudio.com',
+    'https://place-your-print-studio-6wmitxvtb-skylyfe-inc.vercel.app',
+].filter(Boolean);
+
 app.use(cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173', // Allow your client URL
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        return callback(new Error(`CORS blocked origin: ${origin}`));
+    },
     credentials: true // Allow cookies to be sent
 })); // Enables Cross-Origin Resource Sharing
 app.use(express.json({limit: "50mb"})) // Sets the limit of the JSON body to 50 MB
