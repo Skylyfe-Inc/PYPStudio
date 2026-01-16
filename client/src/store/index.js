@@ -33,6 +33,11 @@ const state = proxy({
   manualRotation: { x: 0, y: 0, z: 0 },
   activeModel: "shirt",
   cartItems: [],
+  userProfile: null,
+  savedDesigns: [],
+  editDesignRef: null,
+  selectedPrintProvider: null,
+  selectedPrintifySelection: null,
 });
 
 // Exporting the reactive state object

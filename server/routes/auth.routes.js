@@ -120,6 +120,31 @@ router.post("/login", async (req, res) => {
 
     const decodedToken = await firebase_admin.auth().verifyIdToken(idToken);
 
+    const uid = decodedToken.uid;
+    const email = decodedToken.email;
+    const tokenDisplayName = decodedToken.name || decodedToken.email;
+
+    const fetchProfile = async (collectionName) => {
+      const docRef = db.collection(collectionName).doc(uid);
+      const doc = await docRef.get();
+      if (!doc.exists) return null;
+      return {
+        ...doc.data(),
+        uid,
+        email,
+        collection: collectionName,
+      };
+    };
+
+    const profile =
+      (await fetchProfile("individuals")) ||
+      (await fetchProfile("vendors")) || {
+        uid,
+        email,
+        displayName: tokenDisplayName,
+        role: "unknown",
+      };
+
     res.cookie("firebaseAuthToken", idToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -137,8 +162,9 @@ router.post("/login", async (req, res) => {
     res.status(200).send({
       message: "Login successful",
       user: {
-        uid: decodedToken.uid,
-        email: decodedToken.email,
+        uid,
+        email,
+        profile,
       },
     });
   } catch (error) {

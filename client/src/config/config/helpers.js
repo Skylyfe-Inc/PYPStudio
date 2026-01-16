@@ -113,6 +113,35 @@ export const captureCanvasImage = () => {
   }
 };
 
+export const captureCanvasThumbnail = ({
+  width = 360,
+  mimeType = "image/jpeg",
+  quality = 0.86,
+} = {}) => {
+  const canvas = selectRendererCanvas();
+  if (!canvas) return null;
+
+  try {
+    const safeWidth = Math.max(1, Math.round(width));
+    const aspect = canvas.height ? canvas.width / canvas.height : 1;
+    const safeHeight = Math.max(1, Math.round(safeWidth / aspect));
+    const offscreen = document.createElement("canvas");
+    offscreen.width = safeWidth;
+    offscreen.height = safeHeight;
+
+    const ctx = offscreen.getContext("2d");
+    if (!ctx) throw new Error("Unable to get thumbnail context");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(canvas, 0, 0, safeWidth, safeHeight);
+
+    return offscreen.toDataURL(mimeType, quality);
+  } catch (error) {
+    console.error("Failed to capture canvas thumbnail", error);
+    return null;
+  }
+};
+
 export const reader = (file) =>
   new Promise((resolve) => {
     const fileReader = new FileReader();
