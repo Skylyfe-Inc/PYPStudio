@@ -4,7 +4,12 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useSnapshot } from "valtio";
 import { useNavigate, useLocation } from "react-router-dom";
 import state from "../store";
-import { reader, captureCanvasImage, downloadCanvasToImage } from "../config/config/helpers";
+import {
+  reader,
+  captureCanvasImage,
+  captureCanvasThumbnail,
+  downloadCanvasToImage,
+} from "../config/config/helpers";
 
 import cartLogo from "../assets/assets/cartLogo.png";
 import downloadIcon from "../assets/assets/download.png";
@@ -28,8 +33,10 @@ import {
   Tab,
   RotationControl,
 } from "../components/index.js";
+import { toastNotify } from "../components/Toast";
 
 const STORAGE_KEY = "customizer_payload";
+const SAVED_DESIGNS_KEY = "pyp_saved_designs";
 
 const DEFAULT_FILTER_STATE = {
   logoShirt: true,
@@ -176,7 +183,10 @@ const Customizer = () => {
 
   // Keep the latest payload persisted (optional but handy)
   useEffect(() => {                                      // NEW: persist newest payload
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch {}
+    try {
+      const { design, ...rest } = payload || {};
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
+    } catch {}
   }, [payload]);
 
   // --- existing local UI state ---
@@ -195,6 +205,10 @@ const Customizer = () => {
   const aiStreamRef = useRef(null);
   const aiImageCacheRef = useRef(new Map());
   const editorTabsRef = useRef(null);
+  const appliedDesignRef = useRef(null);
+  const skipResetRef = useRef(false);
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+  const [designName, setDesignName] = useState("");
 
   const [activeEditorTab, setActiveEditorTab] = useState("");
   const [activeFilterTab, setActiveFilterTab] = useState(() => ({
@@ -278,6 +292,10 @@ const Customizer = () => {
   }, []);
 
   useEffect(() => {
+    if (skipResetRef.current) {
+      skipResetRef.current = false;
+      return;
+    }
     resetDecalTransforms();
   }, [snap.activeModel]);
 
@@ -298,6 +316,118 @@ const Customizer = () => {
       }
     };
   }, []);
+
+  useEffect(() => {
+    console.debug("[Customizer] Incoming payload", payload);
+    let design = payload?.design;
+    if (!design && state.editDesignRef) {
+      const ref = state.editDesignRef;
+      const fromState = Array.isArray(state.savedDesigns)
+        ? state.savedDesigns
+        : [];
+      let fromStorage = [];
+      if (!fromState.length) {
+        try {
+          const rawSaved = localStorage.getItem(SAVED_DESIGNS_KEY);
+          const parsedSaved = rawSaved ? JSON.parse(rawSaved) : [];
+          if (Array.isArray(parsedSaved)) {
+            fromStorage = parsedSaved;
+          }
+        } catch (error) {
+          console.warn("Unable to read saved designs for edit", error);
+        }
+      }
+      const pool = fromState.length ? fromState : fromStorage;
+      design =
+        pool.find((entry) => entry.id === ref.id) ||
+        pool.find((entry) => entry.designSignature === ref.designSignature) ||
+        null;
+    }
+    console.debug("[Customizer] Edit design payload resolved", design);
+    if (!design) return;
+    const designKey = design.id || design.designSignature;
+    if (designKey && appliedDesignRef.current === designKey) return;
+
+    const nextModel = design.model || "shirt";
+    console.debug("[Customizer] Applying design", {
+      key: designKey,
+      model: nextModel,
+      name: design.name,
+    });
+    const currentModel = snap.activeModel || "shirt";
+    if (nextModel !== currentModel) {
+      skipResetRef.current = true;
+      state.activeModel = nextModel;
+    } else {
+      skipResetRef.current = false;
+    }
+
+    setIsMeshyMode(false);
+    setActiveEditorTab("");
+    state.activeTool = "";
+
+    setActiveModelTab((prev) => {
+      const keys = new Set([...Object.keys(prev), nextModel, "meshy"]);
+      const updated = {};
+      keys.forEach((key) => {
+        updated[key] = key === nextModel;
+      });
+      return updated;
+    });
+
+    const nextFilterState = {
+      logoShirt:
+        design.toggles?.isLogoTexture ?? DEFAULT_FILTER_STATE.logoShirt,
+      stylishShirt:
+        design.toggles?.isFullTexture ?? DEFAULT_FILTER_STATE.stylishShirt,
+      logoBack: design.toggles?.isBackLogoTexture ?? DEFAULT_FILTER_STATE.logoBack,
+      stylishBack:
+        design.toggles?.isBackFullTexture ?? DEFAULT_FILTER_STATE.stylishBack,
+    };
+    setActiveFilterTab(nextFilterState);
+    state.isLogoTexture = nextFilterState.logoShirt;
+    state.isFullTexture = nextFilterState.stylishShirt;
+    state.isBackLogoTexture = nextFilterState.logoBack;
+    state.isBackFullTexture = nextFilterState.stylishBack;
+
+    if (design.color) state.color = design.color;
+    if (design.decals?.logo) state.logoDecal = design.decals.logo;
+    if (design.decals?.full) state.fullDecal = design.decals.full;
+    if (design.decals?.backLogo) state.backLogoDecal = design.decals.backLogo;
+    if (design.decals?.backFull) state.backFullDecal = design.decals.backFull;
+
+    if (design.modelScale) {
+      state.modelScale = { ...design.modelScale };
+    }
+    if (design.decalScale) {
+      state.decalScale = {
+        logo: { ...(design.decalScale.logo || { x: 1, y: 1, z: 1 }) },
+        full: { ...(design.decalScale.full || { x: 1, y: 1, z: 1 }) },
+        backLogo: { ...(design.decalScale.backLogo || { x: 1, y: 1, z: 1 }) },
+        backFull: { ...(design.decalScale.backFull || { x: 1, y: 1, z: 1 }) },
+      };
+    }
+    if (design.decalOffset) {
+      state.decalOffset = {
+        logo: { ...(design.decalOffset.logo || { x: 0, y: 0, z: 0 }) },
+        full: { ...(design.decalOffset.full || { x: 0, y: 0, z: 0 }) },
+        backLogo: { ...(design.decalOffset.backLogo || { x: 0, y: 0, z: 0 }) },
+        backFull: { ...(design.decalOffset.backFull || { x: 0, y: 0, z: 0 }) },
+      };
+    }
+    if (design.manualRotation) {
+      state.manualRotation = { ...design.manualRotation };
+    }
+
+    state.activeDecalKey =
+      design.activeDecalKey ||
+      computeFallbackDecalKey(nextFilterState) ||
+      "logo";
+
+    appliedDesignRef.current = designKey || Date.now().toString();
+    state.editDesignRef = null;
+    toastNotify("Design loaded. You're editing your saved design.", "success");
+  }, [payload]);
 
   useEffect(() => {
     const handlePointerDown = (event) => {
@@ -372,6 +502,145 @@ const Customizer = () => {
     } else {
       console.debug("[Customizer] Download succeeded", { fileName });
     }
+  };
+
+  const saveDesign = (nameOverride) => {
+    try {
+      const modelKey = snap.activeModel || "shirt";
+      const defaultLabel = MODEL_DISPLAY_NAMES[modelKey] || "Custom Design";
+      const label = (nameOverride || "").trim() || defaultLabel;
+      const capturedImage =
+        captureCanvasThumbnail({ width: 360 }) || captureCanvasImage();
+      const designSignature = computeDesignSignature(snap);
+      const now = new Date();
+      const displayDate = now.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+      const price = MODEL_BASE_PRICING[modelKey] || MODEL_BASE_PRICING.shirt;
+      const placeholder = MODEL_PLACEHOLDERS[modelKey] || shirtIcon3D;
+      const snapshotDecals = {
+        logo: snap.logoDecal,
+        full: snap.fullDecal,
+        backLogo: snap.backLogoDecal,
+        backFull: snap.backFullDecal,
+      };
+      const snapshotToggles = {
+        isLogoTexture: snap.isLogoTexture,
+        isFullTexture: snap.isFullTexture,
+        isBackLogoTexture: snap.isBackLogoTexture,
+        isBackFullTexture: snap.isBackFullTexture,
+      };
+      const snapshotModelScale = { ...(snap.modelScale || { x: 1, y: 1, z: 1 }) };
+      const snapshotDecalScale = {
+        logo: { ...(snap.decalScale?.logo || { x: 1, y: 1, z: 1 }) },
+        full: { ...(snap.decalScale?.full || { x: 1, y: 1, z: 1 }) },
+        backLogo: { ...(snap.decalScale?.backLogo || { x: 1, y: 1, z: 1 }) },
+        backFull: { ...(snap.decalScale?.backFull || { x: 1, y: 1, z: 1 }) },
+      };
+      const snapshotDecalOffset = {
+        logo: { ...(snap.decalOffset?.logo || { x: 0, y: 0, z: 0 }) },
+        full: { ...(snap.decalOffset?.full || { x: 0, y: 0, z: 0 }) },
+        backLogo: { ...(snap.decalOffset?.backLogo || { x: 0, y: 0, z: 0 }) },
+        backFull: { ...(snap.decalOffset?.backFull || { x: 0, y: 0, z: 0 }) },
+      };
+      const snapshotRotation = { ...(snap.manualRotation || { x: 0, y: 0, z: 0 }) };
+      const id = typeof crypto !== "undefined" && crypto.randomUUID
+        ? `design-${crypto.randomUUID()}`
+        : `design-${Date.now()}`;
+
+      let existing = Array.isArray(state.savedDesigns)
+        ? [...state.savedDesigns]
+        : [];
+      if (existing.length === 0) {
+        try {
+          const stored = localStorage.getItem(SAVED_DESIGNS_KEY);
+          const parsed = stored ? JSON.parse(stored) : [];
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            existing = [...parsed];
+          }
+        } catch (error) {
+          console.warn("Unable to read saved designs", error);
+        }
+      }
+      const matchIndex = existing.findIndex(
+        (entry) => entry.designSignature === designSignature,
+      );
+
+      if (matchIndex !== -1) {
+        const matched = existing[matchIndex];
+        existing[matchIndex] = {
+          ...matched,
+          updatedAt: displayDate,
+          image: capturedImage || matched.image,
+          name: label,
+          model: modelKey,
+          price,
+          placeholder,
+          color: snap.color,
+          decals: snapshotDecals,
+          toggles: snapshotToggles,
+          modelScale: snapshotModelScale,
+          decalScale: snapshotDecalScale,
+          decalOffset: snapshotDecalOffset,
+          activeDecalKey: snap.activeDecalKey,
+          manualRotation: snapshotRotation,
+        };
+        state.savedDesigns = existing;
+      } else {
+        const newDesign = {
+          id,
+          name: label,
+          updatedAt: displayDate,
+          image: capturedImage || placeholder,
+          model: modelKey,
+          designSignature,
+          price,
+          placeholder,
+          color: snap.color,
+          decals: snapshotDecals,
+          toggles: snapshotToggles,
+          modelScale: snapshotModelScale,
+          decalScale: snapshotDecalScale,
+          decalOffset: snapshotDecalOffset,
+          activeDecalKey: snap.activeDecalKey,
+          manualRotation: snapshotRotation,
+        };
+        state.savedDesigns = [...existing, newDesign];
+      }
+
+      try {
+        localStorage.setItem(
+          SAVED_DESIGNS_KEY,
+          JSON.stringify(state.savedDesigns),
+        );
+        toastNotify("Design saved to your profile.", "success");
+      } catch (error) {
+        console.warn("Unable to persist saved designs", error);
+        toastNotify("Saved locally, but unable to persist the design.", "error");
+      }
+    } catch (error) {
+      console.error("Failed to save design", error);
+      toastNotify("Unable to save the design right now.", "error");
+    }
+  };
+
+  const handleOpenSaveModal = () => {
+    const modelKey = snap.activeModel || "shirt";
+    const defaultLabel = MODEL_DISPLAY_NAMES[modelKey] || "Custom Design";
+    setDesignName(defaultLabel);
+    setIsSaveModalOpen(true);
+  };
+
+  const handleConfirmSaveDesign = () => {
+    const trimmedName = (designName || "").trim();
+    if (!trimmedName) {
+      toastNotify("Please enter a design name.", "error");
+      return;
+    }
+    setIsSaveModalOpen(false);
+    saveDesign(trimmedName);
   };
 
   const handleAiPlacementChange = (placement) => {
@@ -1079,6 +1348,16 @@ const Customizer = () => {
             />
           </div>
 
+          {/* Save Design - desktop */}
+          <div className="hidden md:block">
+            <CustomButton
+              type="filled"
+              title="Save Design"
+              handleClick={handleOpenSaveModal}
+              customStyles="py-2 px-4 font-bold text-sm fixed bottom-5 left-5 bg-emerald-500 text-white z-50 pointer-events-auto"
+            />
+          </div>
+
           {/* Profile - desktop */}
           <div className="hidden md:flex fixed top-5 left-5 z-30">
             <button
@@ -1148,15 +1427,15 @@ const Customizer = () => {
               </button>
               <button
                 type="button"
-                onClick={handleDownload}
+                onClick={handleOpenSaveModal}
                 className="flex flex-1 flex-col items-center justify-center gap-1 text-xs font-semibold text-gray-700"
               >
                 <img
                   src={downloadIcon}
-                  alt="Download"
-                 className="h-6 w-6 object-contain"
+                  alt="Save Design"
+                  className="h-6 w-6 object-contain"
                 />
-                <span>Download</span>
+                <span>Save</span>
               </button>
               <button
                 type="button"
@@ -1247,6 +1526,47 @@ const Customizer = () => {
           <div className="md:hidden fixed right-4 bottom-20 z-40">
             <RotationControl />
           </div>
+
+          {isSaveModalOpen && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
+              <div className="w-full max-w-sm rounded-2xl border-2 border-slate-900 bg-white p-6 shadow-xl">
+                <h2 className="text-lg font-bold text-slate-900">Name your design</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Give this design a name so it is easy to find in your profile.
+                </p>
+                <input
+                  type="text"
+                  value={designName}
+                  onChange={(event) => setDesignName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      handleConfirmSaveDesign();
+                    }
+                  }}
+                  className="mt-4 w-full rounded-full border-2 border-slate-900 px-4 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  placeholder="Design name"
+                  autoFocus
+                />
+                <div className="mt-5 flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsSaveModalOpen(false)}
+                    className="rounded-full border-2 border-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-900 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmSaveDesign}
+                    className="rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-emerald-600"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
         </>
       )}

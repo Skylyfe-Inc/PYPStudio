@@ -5,6 +5,9 @@ import { auth } from "../config/firebase";
 import { setToken } from "../config/config/helpers";
 import { toastNotify } from "../components/Toast";
 import fingerprint from "../assets/assets/fingerprint.png";
+import state from "../store";
+
+const PROFILE_STORAGE_KEY = "pyp_user_profile";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -57,6 +60,26 @@ export default function Login() {
 
       // Store token locally as well (for backward compatibility)
       setToken(idToken);
+
+      const nameParts = (user.displayName || "")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+      const fallbackProfile = {
+        uid: user.uid,
+        email: user.email || cleanEmail,
+        displayName: user.displayName || user.email || cleanEmail,
+        firstName: nameParts[0] || "",
+        lastName: nameParts.slice(1).join(" "),
+        role: "unknown",
+      };
+      const profile = { ...fallbackProfile, ...(data?.user?.profile || {}) };
+      state.userProfile = profile;
+      try {
+        localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+      } catch (storageError) {
+        console.warn("Unable to persist profile locally", storageError);
+      }
 
       toastNotify("Logged In Successfully!", "success");
       return true;
