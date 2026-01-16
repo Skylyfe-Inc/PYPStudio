@@ -202,6 +202,11 @@ const Customizer = () => {
   const [aiExpectedCount, setAiExpectedCount] = useState(
     DEFAULT_EXPECTED_AI_COUNT,
   );
+  const [meshyStyle, setMeshyStyle] = useState("realistic");
+  const [meshyTopology, setMeshyTopology] = useState("triangle");
+  const [meshyPolycount, setMeshyPolycount] = useState(30000);
+  const [meshySymmetry, setMeshySymmetry] = useState("auto");
+  const [meshyPoseMode, setMeshyPoseMode] = useState("");
   const aiStreamRef = useRef(null);
   const aiImageCacheRef = useRef(new Map());
   const editorTabsRef = useRef(null);
@@ -772,6 +777,16 @@ const Customizer = () => {
             coverage={aiCoverage}
             expectedCount={aiMode === "meshy" ? 0 : aiExpectedCount}
             onMeshySubmit={aiMode === "meshy" ? handleMeshySubmit : undefined}
+            meshyStyle={meshyStyle}
+            setMeshyStyle={setMeshyStyle}
+            meshyTopology={meshyTopology}
+            setMeshyTopology={setMeshyTopology}
+            meshyPolycount={meshyPolycount}
+            setMeshyPolycount={setMeshyPolycount}
+            meshySymmetry={meshySymmetry}
+            setMeshySymmetry={setMeshySymmetry}
+            meshyPoseMode={meshyPoseMode}
+            setMeshyPoseMode={setMeshyPoseMode}
             meshyLoading={meshyLoading}
             meshyTask={meshyTask}
             meshyError={meshyError}
@@ -888,7 +903,14 @@ const Customizer = () => {
       const response = await fetch(`${API_BASE_URL}/api/v1/meshy/text-to-3d`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: trimmedPrompt }),
+        body: JSON.stringify({
+          prompt: trimmedPrompt,
+          art_style: meshyStyle,
+          topology: meshyTopology,
+          target_polycount: meshyPolycount,
+          symmetry_mode: meshySymmetry,
+          pose_mode: meshyPoseMode,
+        }),
       });
 
       const data = await response.json();
@@ -1164,6 +1186,8 @@ const Customizer = () => {
   const handleActiveModelTab = (tabName) => {
     if (tabName === "meshy") {
       setIsMeshyMode(true);
+      setActiveEditorTab("");
+      state.activeTool = "";
       setActiveModelTab((prev) => {
         const keys = new Set([...Object.keys(prev), "meshy"]);
         const updated = {};
@@ -1269,6 +1293,54 @@ const Customizer = () => {
       ? "-z-10 pointer-events-none"
       : "z-30 pointer-events-auto",
   ].join(" ");
+
+  const handleExitMeshyMode = () => {
+    setIsMeshyMode(false);
+    setActiveModelTab((prev) => {
+      const keys = new Set([...Object.keys(prev), "meshy"]);
+      const updated = {};
+      keys.forEach((key) => {
+        updated[key] = key === snap.activeModel;
+      });
+      return updated;
+    });
+  };
+
+  const meshyPicker = (
+    <AiPicker
+      mode="meshy"
+      prompt={meshPrompt}
+      setPrompt={setMeshPrompt}
+      generatingImg={meshyLoading}
+      handleSubmit={handleSubmit}
+      results={[]}
+      selectedImageId={null}
+      onSelectImage={undefined}
+      onApply={undefined}
+      activeAiType={null}
+      activeAiTypeLabel="Meshy Text to 3D"
+      currentType={null}
+      currentTypeLabel="Meshy Text to 3D"
+      placement={aiPlacement}
+      onPlacementChange={handleAiPlacementChange}
+      coverage={aiCoverage}
+      expectedCount={0}
+      onMeshySubmit={handleMeshySubmit}
+      meshyStyle={meshyStyle}
+      setMeshyStyle={setMeshyStyle}
+      meshyTopology={meshyTopology}
+      setMeshyTopology={setMeshyTopology}
+      meshyPolycount={meshyPolycount}
+      setMeshyPolycount={setMeshyPolycount}
+      meshySymmetry={meshySymmetry}
+      setMeshySymmetry={setMeshySymmetry}
+      meshyPoseMode={meshyPoseMode}
+      setMeshyPoseMode={setMeshyPoseMode}
+      meshyLoading={meshyLoading}
+      meshyTask={meshyTask}
+      meshyError={meshyError}
+    />
+  );
 
   return (
     <AnimatePresence>
@@ -1535,6 +1607,31 @@ const Customizer = () => {
           <div className="md:hidden fixed right-4 bottom-20 z-40">
             <RotationControl />
           </div>
+
+          {isMeshyMode && (
+            <div className="fixed inset-0 z-[80] flex flex-col bg-slate-100">
+              <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Meshy
+                  </p>
+                  <h2 className="text-lg font-bold text-slate-900">
+                    Text-to 3D Printing
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleExitMeshyMode}
+                  className="rounded-full border-2 border-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-900 hover:text-white"
+                >
+                  Back to Customizer
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto px-6 py-6">
+                {meshyPicker}
+              </div>
+            </div>
+          )}
 
           {isSaveModalOpen && (
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
