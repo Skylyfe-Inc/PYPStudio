@@ -7,6 +7,7 @@ import dalleRoutes from './routes/dalle.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import designRoutes from './routes/design.routes.js';
 import meshyRoutes from './routes/meshy.routes.js';
+import printifyRoutes from './routes/printify.routes.js';
 
 dotenv.config(); // Loads environment variables from .env file
 
@@ -24,6 +25,7 @@ app.use('/api/v1/images/generations', dalleRoutes); // Adds routes from dalleRou
 app.use('/api/v1/auth', authRoutes); // Adds routes from authRoutes
 app.use('/api/v1/designs', designRoutes); // Adds routes from designRoutes
 app.use('/api/v1/meshy', meshyRoutes); // Adds routes for Meshy integration
+app.use('/api/v1/printify', printifyRoutes); // Adds routes for Printify catalog
 
 app.get('/', (req,res) =>{ // GET request to root endpoint
     res.status(200).json({message: 'Hello From PlaceYourPrintStudio Server'}) // Sends 200 status code and JSON message
