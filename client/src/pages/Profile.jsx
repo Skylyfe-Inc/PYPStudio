@@ -1,7 +1,15 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useSnapshot } from "valtio";
 import previewShirt from "../assets/assets/logo-tshirt.png";
 import state from "../store";
+import { toastNotify } from "../components/Toast";
+import { auth } from "../config/firebase";
+import { signOut } from "firebase/auth";
+import { removeToken } from "../config/config/helpers";
+
+const PROFILE_STORAGE_KEY = "pyp_user_profile";
+const SAVED_DESIGNS_KEY = "pyp_saved_designs";
 
 const ordersSeed = [
   {
@@ -22,30 +30,189 @@ const ordersSeed = [
   },
 ];
 
-const designsSeed = [
-  {
-    id: "design-1",
-    name: "Electric Violet Tee",
-    updatedAt: "Feb 16, 2024",
-    image: previewShirt,
-  },
-  {
-    id: "design-2",
-    name: "Sunset Gradient Hoodie",
-    updatedAt: "Jan 26, 2024",
-    image: previewShirt,
-  },
-];
+const buildInitials = (displayName, profile = {}) => {
+  const source = (displayName || profile.email || "").trim();
+  if (!source) return "?";
+
+  const parts = source.split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] || "";
+  const second =
+    parts.length > 1
+      ? parts[parts.length - 1]?.[0] || ""
+      : source.includes("@")
+        ? source[1] || ""
+        : "";
+
+  const initials = `${first}${second}`.toUpperCase();
+  return initials || "?";
+};
 
 const Profile = () => {
   const navigate = useNavigate();
+  const snap = useSnapshot(state);
 
   const orders = useMemo(() => ordersSeed, []);
-  const designs = useMemo(() => designsSeed, []);
+  const designs = useMemo(
+    () => (Array.isArray(snap.savedDesigns) ? snap.savedDesigns : []),
+    [snap.savedDesigns],
+  );
+
+  useEffect(() => {
+    if (snap.userProfile) return;
+    try {
+      const stored = localStorage.getItem(PROFILE_STORAGE_KEY);
+      if (stored) {
+        state.userProfile = JSON.parse(stored);
+      }
+    } catch (error) {
+      console.warn("Unable to read stored profile", error);
+    }
+  }, [snap.userProfile]);
+
+  useEffect(() => {
+    if (Array.isArray(snap.savedDesigns) && snap.savedDesigns.length > 0) return;
+    try {
+      const stored = localStorage.getItem(SAVED_DESIGNS_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          state.savedDesigns = parsed;
+        }
+      }
+    } catch (error) {
+      console.warn("Unable to read stored designs", error);
+    }
+  }, [snap.savedDesigns]);
+
+  const profile = snap.userProfile || {};
+  const displayName =
+    profile.displayName ||
+    [profile.firstName, profile.lastName].filter(Boolean).join(" ").trim() ||
+    profile.email ||
+    "User";
+  const initials = useMemo(
+    () => buildInitials(displayName, profile),
+    [
+      displayName,
+      profile.email,
+      profile.firstName,
+      profile.lastName,
+    ],
+  );
+  const splitName = displayName.split(" ").filter(Boolean);
+  const profileFields = [
+    {
+      label: "First name",
+      value: profile.firstName || splitName[0] || "Not provided",
+    },
+    {
+      label: "Last name",
+      value: profile.lastName || splitName.slice(1).join(" ") || "Not provided",
+    },
+    { label: "Email", value: profile.email || "Not provided" },
+  ];
+
+  const persistDesigns = (nextDesigns) => {
+    state.savedDesigns = nextDesigns;
+    try {
+      localStorage.setItem(SAVED_DESIGNS_KEY, JSON.stringify(nextDesigns));
+    } catch (error) {
+      console.warn("Unable to persist saved designs", error);
+    }
+  };
+
+  const handleDeleteDesign = (designId) => {
+    const current = Array.isArray(state.savedDesigns) ? state.savedDesigns : [];
+    const next = current.filter((design) => design.id !== designId);
+    persistDesigns(next);
+  };
+
+  const handleEditDesign = (design) => {
+    if (!design) return;
+    console.debug("[Profile] Edit design clicked", {
+      id: design.id,
+      signature: design.designSignature,
+      name: design.name,
+      model: design.model,
+    });
+    state.intro = false;
+    state.editDesignRef = {
+      id: design.id,
+      designSignature: design.designSignature,
+    };
+    toastNotify("Opening your design in the customizer...", "success");
+    navigate("/home");
+  };
+
+  const handleAddDesignToCart = (design) => {
+    if (!design) return;
+    const price = typeof design.price === "number" ? design.price : 44.99;
+    const placeholder = design.placeholder || previewShirt;
+    const colorHex = design.color || "#3f3dfa";
+    const designSignature = design.designSignature || design.id;
+    const label = design.name || "Custom Design";
+    const id = typeof crypto !== "undefined" && crypto.randomUUID
+      ? `cart-${crypto.randomUUID()}`
+      : `cart-${Date.now()}`;
+
+    const existing = Array.isArray(state.cartItems) ? [...state.cartItems] : [];
+    const matchIndex = existing.findIndex(
+      (entry) => entry.designSignature === designSignature,
+    );
+
+    if (matchIndex !== -1) {
+      const matchedItem = existing[matchIndex];
+      const nextQuantity =
+        Math.max(1, typeof matchedItem.quantity === "number" ? matchedItem.quantity : 1) +
+        1;
+      existing[matchIndex] = {
+        ...matchedItem,
+        quantity: nextQuantity,
+        thumbnail: design.image || matchedItem.thumbnail || placeholder,
+      };
+      state.cartItems = existing;
+      return;
+    }
+
+    const newItem = {
+      id,
+      model: design.model || "shirt",
+      name: label,
+      price,
+      quantity: 1,
+      colorHex,
+      createdAt: new Date().toISOString(),
+      thumbnail: design.image || placeholder,
+      placeholder,
+      decals: design.decals || {},
+      toggles: design.toggles || {},
+      designSignature,
+    };
+
+    state.cartItems = [...existing, newItem];
+  };
 
   const handleBackToCustomizer = () => {
     state.intro = false;
     navigate("/home");
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.warn("Logout failed", error);
+    }
+    removeToken();
+    state.userProfile = null;
+    state.editDesignRef = null;
+    try {
+      localStorage.removeItem(PROFILE_STORAGE_KEY);
+    } catch (error) {
+      console.warn("Unable to clear stored profile", error);
+    }
+    toastNotify("Logged out successfully.", "success");
+    navigate("/");
   };
 
   return (
@@ -56,13 +223,22 @@ const Profile = () => {
             <h1 className="text-3xl font-black text-slate-900 md:text-4xl">
               User Profile
             </h1>
-            <button
-              type="button"
-              onClick={handleBackToCustomizer}
-              className="hidden rounded-full border-2 border-slate-900 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-900 hover:text-white md:inline-flex"
-            >
-              Customize Again
-            </button>
+            <div className="hidden items-center gap-3 md:flex">
+              <button
+                type="button"
+                onClick={handleBackToCustomizer}
+                className="rounded-full border-2 border-slate-900 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-900 hover:text-white"
+              >
+                Customize Again
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="rounded-full border-2 border-rose-500 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-rose-600 transition hover:bg-rose-500 hover:text-white"
+              >
+                Logout
+              </button>
+            </div>
             <button
               type="button"
               onClick={handleBackToCustomizer}
@@ -84,6 +260,13 @@ const Profile = () => {
               </svg>
             </button>
           </div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="md:hidden inline-flex items-center justify-center self-start rounded-full border-2 border-rose-500 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-rose-600 transition hover:bg-rose-500 hover:text-white"
+          >
+            Logout
+          </button>
           <p className="max-w-3xl text-sm text-slate-600 md:text-base">
             Review your account details, revisit past orders, and keep your
             favorite designs close so you can remix them anytime.
@@ -94,12 +277,16 @@ const Profile = () => {
           <div className="rounded-3xl border-2 border-slate-900 bg-white p-6 shadow-lg lg:col-span-1">
             <div className="flex flex-col items-center gap-5">
               <div className="flex h-28 w-28 items-center justify-center rounded-full border-4 border-slate-900 bg-slate-200 text-4xl font-black text-slate-600">
-                JD
+                {initials}
               </div>
               <div className="w-full space-y-3 text-sm text-slate-600">
-                <ProfileField label="First name" value="Jordan" />
-                <ProfileField label="Last name" value="Doe" />
-                <ProfileField label="Email" value="jordan.doe@email.com" />
+                {profileFields.map((field) => (
+                  <ProfileField
+                    key={field.label}
+                    label={field.label}
+                    value={field.value}
+                  />
+                ))}
               </div>
               <button
                 type="button"
@@ -141,7 +328,7 @@ const Profile = () => {
                           tone="danger"
                         />
                       )}
-                      <ProfileActionButton label="Add to Bag" tone="primary" />
+                      <ProfileActionButton label="Checkout" tone="primary" />
                     </div>
                   </div>
                 </div>
@@ -162,38 +349,52 @@ const Profile = () => {
                   className="w-full border-none bg-transparent text-slate-700 outline-none placeholder:text-slate-400"
                 />
               </label>
-              <button
-                type="button"
-                className="rounded-full border-2 border-slate-900 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-900 hover:text-white"
-              >
-                Upload New Design
-              </button>
             </div>
 
             <div className="space-y-3">
-              {designs.map((design) => (
-                <div
-                  key={design.id}
-                  className="grid gap-4 rounded-2xl border border-slate-200 p-4 transition hover:border-slate-400 sm:grid-cols-[auto_1fr_auto]"
-                >
-                  <img
-                    src={design.image}
-                    alt={design.name}
-                    className="h-16 w-16 rounded-xl border border-slate-200 object-cover"
-                  />
-                  <div>
-                    <p className="font-semibold text-slate-900">{design.name}</p>
-                    <p className="mt-1 text-xs text-slate-500 sm:text-sm">
-                      Last edited: {design.updatedAt}
-                    </p>
+              {designs.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
+                  No saved designs yet.
+                </p>
+              ) : (
+                designs.map((design) => (
+                  <div
+                    key={design.id}
+                    className="grid gap-4 rounded-2xl border border-slate-200 p-4 transition hover:border-slate-400 sm:grid-cols-[auto_1fr_auto]"
+                  >
+                    <img
+                      src={design.image || previewShirt}
+                      alt={design.name}
+                      className="h-16 w-16 rounded-xl border border-slate-200 object-cover"
+                    />
+                    <div>
+                      <p className="font-semibold text-slate-900">
+                        {design.name}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500 sm:text-sm">
+                        Last edited: {design.updatedAt}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end justify-between gap-2 sm:flex-row sm:items-center">
+                      <ProfileActionButton
+                        label="Add to Cart"
+                        tone="primary"
+                        onClick={() => handleAddDesignToCart(design)}
+                      />
+                      <ProfileActionButton
+                        label="Edit Design"
+                        tone="default"
+                        onClick={() => handleEditDesign(design)}
+                      />
+                      <ProfileActionButton
+                        label="Delete Design"
+                        tone="danger"
+                        onClick={() => handleDeleteDesign(design.id)}
+                      />
+                    </div>
                   </div>
-                  <div className="flex flex-col items-end justify-between gap-2 sm:flex-row sm:items-center">
-                    <ProfileActionButton label="Add to Cart" tone="primary" />
-                    <ProfileActionButton label="Edit Design" tone="default" />
-                    <ProfileActionButton label="Delete Design" tone="danger" />
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </section>
@@ -231,11 +432,12 @@ const tones = {
     "bg-rose-500 text-white hover:bg-rose-600 focus-visible:bg-rose-600 focus-visible:ring-rose-700",
 };
 
-const ProfileActionButton = ({ label, tone = "default" }) => {
+const ProfileActionButton = ({ label, tone = "default", onClick }) => {
   const variant = tones[tone] || tones.default;
   return (
     <button
       type="button"
+      onClick={onClick}
       className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${variant}`}
     >
       {label}
