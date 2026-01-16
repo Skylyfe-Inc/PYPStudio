@@ -93,6 +93,29 @@ const resolvePreviewImage = (variant, blueprint) => {
   return blueprintImage || "";
 };
 
+const buildProviderMeta = (provider) => {
+  if (!provider) return null;
+  return {
+    id: provider.id,
+    name:
+      provider.title || provider.name || provider.company || `Provider ${provider.id}`,
+    logo:
+      provider.logo ||
+      provider.logo_url ||
+      provider.image ||
+      provider.icon ||
+      provider.avatar ||
+      "",
+    url:
+      provider.website ||
+      provider.url ||
+      provider.site_url ||
+      provider.external_url ||
+      provider.home_url ||
+      "",
+  };
+};
+
 const getVariantMeta = (variants) => {
   const sizes = new Set();
   const colors = new Set();
@@ -341,12 +364,24 @@ const PrintifyCatalog = () => {
     handleSelectVariant(variant);
   };
 
+  const handleProviderChange = (event) => {
+    const nextId = event.target.value;
+    setSelectedProviderId(nextId);
+    const provider = providers.find(
+      (item) => String(item.id) === String(nextId),
+    );
+    const meta = buildProviderMeta(provider);
+    if (meta) {
+      state.selectedPrintProvider = meta;
+    }
+  };
+
   return (
     <div className="h-screen overflow-y-auto bg-slate-100 px-4 py-10 sm:px-6 lg:px-10">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
         <header className="flex flex-col gap-2">
           <h1 className="text-3xl font-black text-slate-900">
-            Printify Catalog Browser
+            Vendor Browser
           </h1>
           <p className="text-sm text-slate-600">
             Browse blueprints, select a provider, and inspect variants.
@@ -409,7 +444,7 @@ const PrintifyCatalog = () => {
               <select
                 className="rounded-2xl border-2 border-slate-900 bg-white px-4 py-2 text-sm"
                 value={selectedProviderId}
-                onChange={(event) => setSelectedProviderId(event.target.value)}
+                onChange={handleProviderChange}
                 disabled={!providers.length}
               >
                 <option value="">Select a provider</option>

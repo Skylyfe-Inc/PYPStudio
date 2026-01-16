@@ -5,6 +5,9 @@ import state from "../store";
 import logoPlaceholder from "../assets/assets/gotbLogo.png";
 import hoodiePlaceholder from "../assets/assets/3d-hoodie-icon.png";
 
+const PRINTIFY_LOGO =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='80' viewBox='0 0 160 80'><rect width='160' height='80' rx='18' fill='%23111827'/><text x='50%25' y='50%25' fill='white' font-family='Arial, sans-serif' font-size='20' font-weight='700' text-anchor='middle' dominant-baseline='middle'>Printify</text></svg>";
+
 const Cart = () => {
   const navigate = useNavigate();
   const snap = useSnapshot(state);
@@ -24,6 +27,11 @@ const Cart = () => {
 
     return { subtotal, itemCount };
   }, [cartItems]);
+  const provider = snap.selectedPrintProvider || {};
+  const providerName =
+    provider.name || provider.title || provider.company || "Printify Provider";
+  const providerLogo = provider.logo || PRINTIFY_LOGO;
+  const providerUrl = provider.url || "";
 
   const adjustQuantity = (id, delta) => {
     state.cartItems = (state.cartItems || []).map((entry) => {
@@ -50,6 +58,9 @@ const Cart = () => {
   const handleStartNewDesign = () => {
     state.intro = false;
     navigate("/home");
+  };
+  const handleSelectVendor = () => {
+    navigate("/printify-catalog");
   };
 
   const isEmpty = cartItems.length === 0;
@@ -109,11 +120,15 @@ const Cart = () => {
                 ))}
               </div>
 
-              <CartSummary
-                totals={totals}
-                onCheckout={handleCheckout}
-                onStartNewDesign={handleStartNewDesign}
-              />
+      <CartSummary
+        totals={totals}
+        onCheckout={handleCheckout}
+        onStartNewDesign={handleStartNewDesign}
+        providerName={providerName}
+        providerLogo={providerLogo}
+        providerUrl={providerUrl}
+        onSelectVendor={handleSelectVendor}
+      />
             </div>
           )}
         </section>
@@ -189,28 +204,43 @@ const CartItem = ({ item, onDecrease, onIncrease, onRemove, onCustomize, showDiv
   );
 };
 
-const CartSummary = ({ totals, onCheckout, onStartNewDesign }) => (
+const CartSummary = ({
+  totals,
+  onCheckout,
+  onStartNewDesign,
+  providerName,
+  providerLogo,
+  providerUrl,
+  onSelectVendor,
+}) => (
   <article className="grid gap-6 md:grid-cols-[2fr_1fr] md:items-center">
     <div className="space-y-4">
-      <h3 className="text-lg font-bold text-zinc-900">Select Vendor</h3>
+      <h3 className="text-lg font-bold text-zinc-900">Selected Vendor</h3>
       <div className="space-y-1 text-sm text-zinc-600">
-        <p className="italic text-zinc-800">Hanes</p>
-        <button
-          type="button"
-          className="text-indigo-600 underline decoration-2 underline-offset-2"
-        >
-          Visit Vendor Profile
-        </button>
+        <p className="font-semibold text-zinc-800">{providerName}</p>
+        {providerUrl ? (
+          <a
+            href={providerUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-indigo-600 underline decoration-2 underline-offset-2"
+          >
+            Provider info
+          </a>
+        ) : (
+          <span className="text-xs text-zinc-400">Provider info unavailable</span>
+        )}
       </div>
       <div className="flex items-center gap-4">
         <img
-          src={logoPlaceholder}
-          alt="Hanes logo"
+          src={providerLogo || logoPlaceholder}
+          alt={`${providerName} logo`}
           className="h-20 w-24 rounded-xl border border-zinc-200 object-contain"
         />
         <button
           type="button"
           className="rounded-full bg-indigo-600 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-white shadow-sm transition hover:bg-indigo-500"
+          onClick={onSelectVendor}
         >
           Select
         </button>

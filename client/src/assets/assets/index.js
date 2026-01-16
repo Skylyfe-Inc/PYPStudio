@@ -12,6 +12,7 @@ import shirtIcon3D from "./3d-shirt-icon.png";
 import hoodieIcon3D from "./3d-hoodie-icon.png";
 import bootIcon3D from "./3d-boot-icon.png";
 import sneakerIcon3D from "./3d-sneaker-icon.png";
+import printerIcon3D from "./3d-printer-icon.svg";
 
 export {
   ai,
@@ -25,5 +26,6 @@ export {
   hoodieIcon3D,
   bootIcon3D,
   sneakerIcon3D,
+  printerIcon3D,
   moveIcon,
 };

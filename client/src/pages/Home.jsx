@@ -35,11 +35,33 @@ const Home = () => {
     setShowVendorModal(true);
   };
 
+  const handleCustomizeNow = () => {
+    state.intro = false;
+  };
+
   const handleSelectVendor = (vendor) => {
     if (!vendor) return;
+    const providerName =
+      vendor.title || vendor.name || vendor.company || `Provider ${vendor.id}`;
+    const providerLogo =
+      vendor.logo ||
+      vendor.logo_url ||
+      vendor.image ||
+      vendor.icon ||
+      vendor.avatar ||
+      "";
+    const providerUrl =
+      vendor.website ||
+      vendor.url ||
+      vendor.site_url ||
+      vendor.external_url ||
+      vendor.home_url ||
+      "";
     state.selectedPrintProvider = {
       id: vendor.id,
-      name: vendor.title || vendor.name || `Provider ${vendor.id}`,
+      name: providerName,
+      logo: providerLogo,
+      url: providerUrl,
     };
     setShowVendorModal(false);
     navigate("/printify-catalog");
@@ -102,8 +124,8 @@ const Home = () => {
               </p>
               <CustomButton
                 type="filled"
-                title="Select Vendor"
-                handleClick={openVendorModal}
+                title="Customize Now"
+                handleClick={handleCustomizeNow}
                 customStyles="w-fit px-5 py-2.5 font-bold text-sm gap-4"
               />
 
@@ -135,7 +157,7 @@ const Home = () => {
               ) : (
                 providers.map((vendor, index) => (
                   <button
-                    key={`${vendor.id || vendor.title || "provider"}-${index}`}
+                    key={`${vendor.id || vendor.title || vendor.name || "provider"}-${index}`}
                     type="button"
                     onClick={() => handleSelectVendor(vendor)}
                     className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-left text-sm text-slate-700 transition hover:border-slate-400"

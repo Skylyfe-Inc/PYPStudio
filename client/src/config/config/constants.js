@@ -8,6 +8,7 @@ import {
   hoodieIcon3D,
   bootIcon3D,
   sneakerIcon3D,
+  printerIcon3D,
   scaleicon,
   moveIcon,
 } from "../../assets/assets";
@@ -31,7 +32,7 @@ export const CarouselTabs = [
   },
   {
     name: "meshy",
-    icon: ai,
+    icon: printerIcon3D,
     label: "Text to 3D",
   },
 ];
