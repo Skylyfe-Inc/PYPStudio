@@ -36,6 +36,8 @@ const state = proxy({
   userProfile: null,
   savedDesigns: [],
   editDesignRef: null,
+  selectedPrintProvider: null,
+  selectedPrintifySelection: null,
 });
 
 // Exporting the reactive state object

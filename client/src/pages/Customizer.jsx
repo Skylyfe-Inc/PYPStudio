@@ -1301,14 +1301,21 @@ const Customizer = () => {
           {/* Cart button + badge - desktop */}
           <div className="hidden md:flex fixed top-5 right-40 space-x-4">
             <div className="relative">
-              <CustomButton
-                type="plain"
-                customStyles="p-0 bg-transparent shadow-none hover:bg-transparent"
-                imageSrc={cartLogo}
-                alt="Cart Icon"
-                handleClick={handleCartNavigation}
-              />
-              <span className="absolute -top-2 -right-2 bg-teal-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+              <button
+                type="button"
+                onClick={handleCartNavigation}
+                aria-label="Cart"
+                className="group flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 via-orange-400 to-rose-400 shadow-lg ring-2 ring-zinc-900/80 transition-transform hover:scale-105"
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 shadow-inner">
+                  <img
+                    src={cartLogo}
+                    alt="Cart Icon"
+                    className="h-5 w-5 object-contain"
+                  />
+                </span>
+              </button>
+              <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-teal-500 text-xs font-bold text-white shadow-md">
                 {cartCount}
               </span>
             </div>
@@ -1411,14 +1418,16 @@ const Customizer = () => {
                 onClick={handleCartNavigation}
                 className="relative flex flex-1 flex-col items-center justify-center gap-1 text-xs font-semibold text-gray-700"
               >
-                <div className="relative">
-                  <img
-                    src={cartLogo}
-                    alt="Add to Cart"
-                    className="h-6 w-6 object-contain"
-                  />
+                <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 via-orange-400 to-rose-400 shadow-md">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90">
+                    <img
+                      src={cartLogo}
+                      alt="Cart"
+                      className="h-4 w-4 object-contain"
+                    />
+                  </div>
                   {cartCount > 0 && (
-                    <span className="absolute -top-1 -right-2 inline-flex items-center justify-center h-4 min-w-[1rem] rounded-full bg-teal-500 px-1 text-[10px] font-bold text-white">
+                    <span className="absolute -top-1 -right-2 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-teal-500 px-1 text-[10px] font-bold text-white shadow-md">
                       {cartCount}
                     </span>
                   )}
