@@ -1,8 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "../config/firebase";
 import { setToken } from "../config/config/helpers";
 import { toastNotify } from "../components/Toast";
 import fingerprint from "../assets/assets/fingerprint.png";
+import state from "../store";
+
+const PROFILE_STORAGE_KEY = "pyp_user_profile";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -11,13 +16,109 @@ export default function Login() {
   const [password, setPassword] = useState("");
 
   async function authenticateUser() {
-    setToken("dummy_token_123");
-    toastNotify("Logged In Successfully!", "success");
+    try {
+      console.log("🔐 Attempting to sign in with:", email);
+
+      // Sign in with Firebase Authentication
+      const cleanEmail = (email || "").trim().toLowerCase();
+      const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+      console.log("🔐 Attempting to sign in with:", JSON.stringify(cleanEmail));
+
+      const user = userCredential.user;
+
+      console.log("Firebase sign in successful:", user.uid);
+
+      // Get the ID token
+      const idToken = await user.getIdToken();
+      const refreshToken = user.refreshToken;
+
+      console.log("🎫 Got tokens, sending to backend...");
+
+      // Send tokens to backend to set cookies
+      const response = await fetch('http://localhost:8080/api/v1/auth/login', {
+        method: 'POST',
+        credentials: 'include', // Important: enables cookies
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          idToken,
+          refreshToken
+        })
+      });
+
+      console.log("Backend response status:", response.status);
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error("❌ Backend error:", error);
+        throw new Error(error.message || 'Login failed');
+      }
+
+      const data = await response.json();
+      console.log("Backend response:", data);
+
+      // Store token locally as well (for backward compatibility)
+      setToken(idToken);
+
+      const nameParts = (user.displayName || "")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+      const fallbackProfile = {
+        uid: user.uid,
+        email: user.email || cleanEmail,
+        displayName: user.displayName || user.email || cleanEmail,
+        firstName: nameParts[0] || "",
+        lastName: nameParts.slice(1).join(" "),
+        role: "unknown",
+      };
+      const profile = { ...fallbackProfile, ...(data?.user?.profile || {}) };
+      state.userProfile = profile;
+      try {
+        localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+      } catch (storageError) {
+        console.warn("Unable to persist profile locally", storageError);
+      }
+
+      toastNotify("Logged In Successfully!", "success");
+      return true;
+    } catch (error) {
+      console.error("❌ Authentication error:", error);
+      console.error("Error code:", error.code);
+      console.error("Error message:", error.message);
+
+      // User-friendly error messages
+      let errorMessage = "Login failed. Please try again.";
+
+      if (error.code === 'auth/user-not-found') {
+        errorMessage = "No account found with this email.";
+      } else if (error.code === 'auth/wrong-password') {
+        errorMessage = "Incorrect password. Please try again.";
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = "Invalid email address.";
+      } else if (error.code === 'auth/user-disabled') {
+        errorMessage = "This account has been disabled.";
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = "Too many failed attempts. Please try again later.";
+      } else if (error.code === 'auth/invalid-credential') {
+        errorMessage = "Invalid email or password.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      toastNotify(errorMessage, "error");
+      throw error;
+    }
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email || !password) return;
+
+    if (!email || !password) {
+      toastNotify("Please enter both email and password", "error");
+      return;
+    }
 
     try {
       setLoading(true);
@@ -26,6 +127,8 @@ export default function Login() {
       console.log("About to navigate to /home");
       navigate("/home");
       console.log("navigate() called");
+    } catch (error) {
+      // Error already handled in authenticateUser
     } finally {
       setLoading(false);
     }

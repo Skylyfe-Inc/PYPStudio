@@ -42,6 +42,16 @@ const AiPicker = ({
   meshyLoading = false,
   meshyTask = null,
   meshyError = "",
+  meshyStyle = "realistic",
+  setMeshyStyle = () => {},
+  meshyTopology = "triangle",
+  setMeshyTopology = () => {},
+  meshyPolycount = 30000,
+  setMeshyPolycount = () => {},
+  meshySymmetry = "auto",
+  setMeshySymmetry = () => {},
+  meshyPoseMode = "",
+  setMeshyPoseMode = () => {},
 }) => {
   if (mode === "meshy") {
     const disabled = meshyLoading || !prompt?.trim();
@@ -72,7 +82,7 @@ const AiPicker = ({
         : undefined);
 
     return (
-      <div className="aipicker-container">
+      <div className="aipicker-container aipicker-meshy">
         <div className="flex h-full flex-col gap-4">
           <textarea
             placeholder="Describe the 3D model you want Meshy to create…"
@@ -81,6 +91,83 @@ const AiPicker = ({
             onChange={(e) => setPrompt(e.target.value)}
             className="aipicker-textarea"
           />
+
+          <div className="grid gap-3 rounded-xl border-2 border-zinc-200 bg-white/90 p-3 text-xs text-zinc-600">
+            <label className="flex flex-col gap-1">
+              <span className="font-semibold uppercase tracking-wide text-zinc-500">
+                Art style
+              </span>
+              <select
+                value={meshyStyle}
+                onChange={(event) => setMeshyStyle(event.target.value)}
+                className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-700"
+              >
+                <option value="realistic">Realistic</option>
+                <option value="sculpture">Sculpture</option>
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="font-semibold uppercase tracking-wide text-zinc-500">
+                Topology
+              </span>
+              <select
+                value={meshyTopology}
+                onChange={(event) => setMeshyTopology(event.target.value)}
+                className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-700"
+              >
+                <option value="triangle">Triangle</option>
+                <option value="quad">Quad</option>
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="font-semibold uppercase tracking-wide text-zinc-500">
+                Target polycount
+              </span>
+              <input
+                type="number"
+                min={100}
+                max={300000}
+                step={100}
+                value={meshyPolycount}
+                onChange={(event) =>
+                  setMeshyPolycount(Number(event.target.value || 0))
+                }
+                className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-700"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="font-semibold uppercase tracking-wide text-zinc-500">
+                Symmetry
+              </span>
+              <select
+                value={meshySymmetry}
+                onChange={(event) => setMeshySymmetry(event.target.value)}
+                className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-700"
+              >
+                <option value="auto">Auto</option>
+                <option value="on">On</option>
+                <option value="off">Off</option>
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="font-semibold uppercase tracking-wide text-zinc-500">
+                Pose mode
+              </span>
+              <select
+                value={meshyPoseMode}
+                onChange={(event) => setMeshyPoseMode(event.target.value)}
+                className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-700"
+              >
+                <option value="">None</option>
+                <option value="a-pose">A-pose</option>
+                <option value="t-pose">T-pose</option>
+              </select>
+            </label>
+          </div>
 
           {meshyError && (
             <div className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-rose-600">

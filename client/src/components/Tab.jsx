@@ -9,7 +9,7 @@ const Tab = ({ tab, isFilterTab, isActiveTab, handleClick }) => {
   return (
     <div
       key={tab.name}
-      className={`tab-btn  ${
+      className={`tab-btn ${
         isFilterTab ? "rounded-full glassmorhism" : "rounded-4"
       }`}
       onClick={handleClick}
@@ -18,9 +18,13 @@ const Tab = ({ tab, isFilterTab, isActiveTab, handleClick }) => {
       <img
         src={tab.icon}
         alt={tab.name}
-        className={`${
-          isFilterTab ? "w-2/3 h-2/3" : "w-11/12 h-11/12 object-contain"
-        }`}
+        className={
+          isFilterTab
+            ? "w-2/3 h-2/3"
+            : tab.label
+              ? "w-8 h-8 md:w-9 md:h-9 object-contain"
+              : "w-11/12 h-11/12 object-contain"
+        }
       />
       {isFilterTab && (
         <span
@@ -38,6 +42,11 @@ const Tab = ({ tab, isFilterTab, isActiveTab, handleClick }) => {
           }
         >
           {label}
+        </span>
+      )}
+      {!isFilterTab && tab.label && (
+        <span className="tab-label rounded-full border border-zinc-900/40 bg-white/90 px-2 py-0.5 text-[10px] uppercase tracking-wide">
+          {tab.label}
         </span>
       )}
     </div>

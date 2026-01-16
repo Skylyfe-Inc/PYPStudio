@@ -23,6 +23,7 @@ const VendorSignUpPage = React.lazy(() => import("./pages/VendorSignUp"));
 const LoginStudio = React.lazy(() => import("./pages/LoginStudio"));
 const IndividualSignUp = React.lazy(() => import("./pages/IndividualSignUp"));
 const WelcomeAiStudio = React.lazy(() => import("./pages/WelcomeAiStudio"));
+const PrintifyCatalog = React.lazy(() => import("./pages/PrintifyCatalog"));
 function App() {
     const snap = useSnapshot(state);
 
@@ -69,6 +70,10 @@ function App() {
                             } />
                             <Route path={AppRoutes.Cart.path} element={<Cart />} />
                             <Route path={AppRoutes.Profile.path} element={<Profile />} />
+                            <Route
+                                path={AppRoutes.PrintifyCatalog.path}
+                                element={<PrintifyCatalog />}
+                            />
                         </Route>
                     </Route>
                     {/* Redirect all undefined routed to not found page */}

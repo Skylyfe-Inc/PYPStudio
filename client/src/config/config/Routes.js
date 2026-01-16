@@ -8,6 +8,7 @@ const AppRoutes = {
   NotFound: { path: "*" },
   Cart: { path: "/cart" },
   Profile: { path: "/profile" },
+  PrintifyCatalog: { path: "/printify-catalog" },
   VendorSignUpPage: { path: "/VendorSignUpPage" },
   WelcomeAiStudio: { path: "/WelcomeAiStudio" },
   IndividualSignUp: { path: "/IndividualSignUp" },
