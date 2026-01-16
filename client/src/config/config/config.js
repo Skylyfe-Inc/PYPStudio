@@ -7,7 +7,7 @@ const config = {
   // Production configuration
   production: {
     // URL for the production api
-    backendUrl: "https://placeyourprintstudio.com",
+    backendUrl: "https://www.placeyourprintstudio.com",
   },
 
   authService: "https://localhost:2000", // temp example, every link should be written in either development or production object.
