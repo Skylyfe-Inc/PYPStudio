@@ -75,6 +75,14 @@ const MODEL_BASE_PRICING = {
   sneaker: 74.99,
 };
 
+// Stripe Price IDs for each product model
+const MODEL_STRIPE_PRICE_IDS = {
+  shirt: "price_1Sq130LAGxcNff83lnJfzru8",    // Replace with your actual Stripe Price ID for shirts
+  hoodie: "price_1Sq130LAGxcNff83lnJfzru8",  // Replace with your actual Stripe Price ID for hoodies
+  boot: "price_1Sq13hLAGxcNff83eLu1v4LG",      // Replace with your actual Stripe Price ID for boots
+  sneaker: "price_1Sq140LAGxcNff835KIcn8YK", // Replace with your actual Stripe Price ID for sneakers
+};
+
 const MODEL_PLACEHOLDERS = {
   shirt: shirtIcon3D,
   hoodie: hoodieIcon3D,
@@ -970,6 +978,7 @@ const Customizer = () => {
       createdAt: new Date().toISOString(),
       thumbnail: capturedImage || placeholder,
       placeholder,
+      stripePriceId: MODEL_STRIPE_PRICE_IDS[modelKey] || MODEL_STRIPE_PRICE_IDS.shirt,
       decals: {
         logo: snap.logoDecal,
         full: snap.fullDecal,

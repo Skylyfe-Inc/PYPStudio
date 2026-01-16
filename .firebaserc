@@ -1,0 +1,13 @@
+{
+  "projects": {
+    "default": "place-your-print-studio"
+  },
+  "targets": {},
+  "etags": {
+    "place-your-print-studio": {
+      "extensionInstances": {
+        "firestore-stripe-payments": "01ace85a41ec7ba0112cc079484d850d65812a3cbc4a658877bfeefa823a2825"
+      }
+    }
+  }
+}

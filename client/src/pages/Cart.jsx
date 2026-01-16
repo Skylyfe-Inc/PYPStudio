@@ -4,6 +4,10 @@ import { useSnapshot } from "valtio";
 import state from "../store";
 import logoPlaceholder from "../assets/assets/gotbLogo.png";
 import hoodiePlaceholder from "../assets/assets/3d-hoodie-icon.png";
+import { getCurrentUserOrThrow } from "../lib/stripePayments";
+import { addDoc, collection, doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
+import app from "../config/firebase";
 
 const Cart = () => {
   const navigate = useNavigate();
@@ -42,9 +46,106 @@ const Cart = () => {
     state.cartItems = [];
   };
 
-  const handleCheckout = () => {
-    if (!totals.itemCount) return;
-    alert("Checkout flow coming soon!");
+  const handleCheckout = async () => {
+    try {
+      if (!totals.itemCount) return;
+
+      // 1) Require user login (Stripe extension ties sessions to customers/{uid})
+      const user = getCurrentUserOrThrow();
+
+      // 2) Get user's name (prompt if not available)
+      let firstName = "";
+      let lastName = "";
+      
+      // Try to parse displayName if available
+      if (user.displayName) {
+        const nameParts = user.displayName.trim().split(" ");
+        firstName = nameParts[0] || "";
+        lastName = nameParts.slice(1).join(" ") || "";
+      }
+      
+      // Prompt for name if not available
+      if (!firstName || !lastName) {
+        const fullName = window.prompt("Please enter your full name (First Last):", user.displayName || "");
+        if (!fullName || !fullName.trim()) {
+          alert("Name is required for checkout.");
+          return;
+        }
+        const nameParts = fullName.trim().split(" ");
+        firstName = nameParts[0] || "";
+        lastName = nameParts.slice(1).join(" ") || nameParts[0] || "";
+      }
+
+      const db = getFirestore(app);
+
+      // 3) Create pending order first
+      const orderRef = await addDoc(collection(db, "orders"), {
+        uid: user.uid,
+        email: user.email ?? null,
+        firstName,
+        lastName,
+        status: "pending",
+        createdAt: serverTimestamp(),
+        subtotal: totals.subtotal,
+        itemCount: totals.itemCount,
+        items: cartItems.map((i) => ({
+          id: i.id,
+          name: i.name,
+          price: i.price,
+          quantity: i.quantity,
+          thumbnail: i.thumbnail || null,
+          colorHex: i.colorHex || null,
+          colorLabel: i.colorLabel || null,
+          designName: i.designName || i.name || "Custom Design",
+          designId: i.designId || null,
+        })),
+      });
+
+      // 4) Update customer document with name
+      const customerRef = doc(db, "customers", user.uid);
+      await setDoc(customerRef, {
+        email: user.email ?? null,
+        firstName,
+        lastName,
+      }, { merge: true });
+
+      // 5) Create checkout session doc with orderId in metadata
+      const priceId = cartItems?.[0]?.stripePriceId; // <-- store this on each cart item
+      if (!priceId) throw new Error("Missing stripePriceId on cart item.");
+
+      const checkoutSessionsRef = collection(db, "customers", user.uid, "checkout_sessions");
+
+      const sessionRef = await addDoc(checkoutSessionsRef, {
+        price: priceId,
+        mode: "payment",
+        success_url: `${window.location.origin}/checkout/success?orderId=${orderRef.id}`,
+        cancel_url: `${window.location.origin}/cart`,
+        metadata: {
+          orderId: orderRef.id,
+          uid: user.uid,
+        },
+        allow_promotion_codes: true,
+      });
+
+      // 4) Listen for the extension to write back the Stripe checkout URL (or error)
+      const unsub = onSnapshot(doc(db, "customers", user.uid, "checkout_sessions", sessionRef.id), (snap) => {
+        const data = snap.data();
+        if (!data) return;
+
+        if (data.error) {
+          unsub();
+          throw new Error(data.error.message || "Stripe checkout session failed.");
+        }
+
+        if (data.url) {
+          unsub();
+          window.location.assign(data.url);
+        }
+      });
+    } catch (err) {
+      console.error(err);
+      alert(err.message || "Checkout failed.");
+    }
   };
 
   const handleStartNewDesign = () => {

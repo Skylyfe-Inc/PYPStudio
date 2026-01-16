@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@invertase/firestore-stripe-payments": "^0.0.8"
+  }
+}
