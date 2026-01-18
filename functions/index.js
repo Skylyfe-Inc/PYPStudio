@@ -19,6 +19,9 @@ admin.initializeApp();
 const stripeSecretKey = defineSecret("STRIPE_SECRET_KEY");
 const stripeWebhookSecret = defineSecret("STRIPE_WEBHOOK_SECRET");
 const printifyApiToken = defineSecret("PRINTIFY_API_TOKEN");
+const slantApiKey = defineSecret("SLANT_3D_API_KEY");
+const SLANT3D_BASE_URL =
+  process.env.SLANT3D_API_BASE || "https://slant3dapi.com/v2/api";
 
 // For cost control, you can set the maximum number of containers that can be
 // running at the same time. This helps mitigate the impact of unexpected
@@ -49,6 +52,94 @@ const parseDataUrl = (dataUrl) => {
   const match = dataUrl.match(/^data:(.+?);base64,(.+)$/);
   if (!match) return null;
   return {mime: match[1], data: match[2]};
+};
+
+const normalizeSlantAddress = (input = {}, fallback = {}) => {
+  const address =
+    input.address ||
+    input.street ||
+    input.street1 ||
+    input.address1 ||
+    fallback.address ||
+    fallback.street ||
+    fallback.street1 ||
+    fallback.address1 ||
+    "";
+  return {
+    name: input.name || fallback.name || "",
+    email: input.email || fallback.email || "",
+    phone: input.phone || fallback.phone || "",
+    street: address,
+    city: input.city || fallback.city || "",
+    state: input.state || fallback.state || "",
+    zip: input.zip || input.postalCode || fallback.zip || fallback.postalCode || "",
+    country: input.country || input.countryCode || fallback.country || fallback.countryCode || "",
+  };
+};
+
+const buildSlantOrderPayload = ({
+  fileName,
+  quantity,
+  contact,
+  shipping,
+  publicFileServiceId,
+  filamentId,
+  platformId,
+  itemName,
+  sku,
+  metadata,
+}) => {
+  const contactInfo = normalizeSlantAddress(contact || {});
+  const shipTo = normalizeSlantAddress(shipping || {}, contactInfo);
+
+  return {
+    customer: {
+      platformId: platformId || undefined,
+      details: {
+        email: contactInfo.email,
+        address: {
+          name: contactInfo.name || shipTo.name,
+          line1: shipTo.street,
+          line2: "",
+          city: shipTo.city,
+          state: shipTo.state,
+          zip: shipTo.zip,
+          country: shipTo.country,
+        },
+      },
+    },
+    items: [
+      {
+        type: "PRINT",
+        publicFileServiceId,
+        filamentId,
+        quantity: Number(quantity) || 1,
+        name: itemName || fileName || "3D Model",
+        SKU: sku || undefined,
+      },
+    ],
+    metadata: metadata || undefined,
+  };
+};
+
+const slantRequest = async ({endpoint, apiKey, payload, method = "post"}) => {
+  const response = await fetch(`${SLANT3D_BASE_URL}${endpoint}`, {
+    method: method.toUpperCase(),
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: payload ? JSON.stringify(payload) : undefined,
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const err = new Error(data?.message || "Slant3D request failed");
+    err.status = response.status;
+    err.payload = data;
+    throw err;
+  }
+  return data;
 };
 
 // Centralized Printify request helper with auth + JSON parsing.
@@ -226,7 +317,7 @@ const createPrintifyOrder = async ({
 exports.stripeWebhook = onRequest(
     {
       region: "us-east1",
-      secrets: [stripeSecretKey, stripeWebhookSecret, printifyApiToken],
+      secrets: [stripeSecretKey, stripeWebhookSecret, printifyApiToken, slantApiKey],
     },
     async (req, res) => {
       // Initialize Stripe inside the function to avoid deployment issues
@@ -263,30 +354,36 @@ exports.stripeWebhook = onRequest(
 
           if (!orderId || !uid) {
             console.warn("Missing orderId/uid in session metadata");
-            return res.status(200).json({received: true});
+            // Continue to check for Slant orders even if Printify metadata is missing.
           }
 
-          const orderRef = admin.firestore().collection("orders").doc(orderId);
-          const orderSnap = await orderRef.get();
-          const orderData = orderSnap.exists ? orderSnap.data() : null;
+          let orderData = null;
+          let orderRef = null;
+          if (orderId) {
+            orderRef = admin.firestore().collection("orders").doc(orderId);
+            const orderSnap = await orderRef.get();
+            orderData = orderSnap.exists ? orderSnap.data() : null;
+          }
 
-          // Mark the order as paid
-          await orderRef.set(
-              {
-                status: "paid",
-                paidAt: admin.firestore.FieldValue.serverTimestamp(),
-                stripe: {
-                  checkoutSessionId: session.id,
-                  customerId: session.customer,
-                  paymentIntentId: session.payment_intent || null,
-                  amountTotal: session.amount_total,
-                  currency: session.currency,
+          if (orderRef) {
+            // Mark the order as paid
+            await orderRef.set(
+                {
+                  status: "paid",
+                  paidAt: admin.firestore.FieldValue.serverTimestamp(),
+                  stripe: {
+                    checkoutSessionId: session.id,
+                    customerId: session.customer,
+                    paymentIntentId: session.payment_intent || null,
+                    amountTotal: session.amount_total,
+                    currency: session.currency,
+                  },
                 },
-              },
-              {merge: true},
-          );
+                {merge: true},
+            );
+          }
 
-          if (!orderSnap.exists) {
+          if (orderRef && !orderData) {
             console.warn("Order not found for Printify sync", orderId);
           } else if (orderData?.printify?.orderId) {
             console.log(`Printify already created for order ${orderId}`);
@@ -344,7 +441,72 @@ exports.stripeWebhook = onRequest(
             }
           }
 
-          console.log(`Order ${orderId} marked as paid`);
+          // Handle Slant3D order processing after payment.
+          const slantOrderId = session?.metadata?.slantOrderId;
+          if (slantOrderId) {
+            const slantRef = admin.firestore().collection("slantOrders").doc(slantOrderId);
+            const slantSnap = await slantRef.get();
+            const slantData = slantSnap.exists ? slantSnap.data() : null;
+            if (!slantData) {
+              console.warn("Slant order doc missing", slantOrderId);
+            } else if (slantData.status === "processed") {
+              console.log(`Slant order already processed ${slantOrderId}`);
+            } else {
+              const slantKey = slantApiKey.value();
+              if (!slantKey) {
+                console.warn("Slant API key not configured");
+              } else {
+                try {
+                  await slantRef.set(
+                      {status: "processing", processedAt: admin.firestore.FieldValue.serverTimestamp()},
+                      {merge: true},
+                  );
+                  const orderPayload = buildSlantOrderPayload(slantData);
+                  const orderResponse = await slantRequest({
+                    endpoint: "/orders",
+                    apiKey: slantKey,
+                    payload: orderPayload,
+                  });
+                  const publicId =
+                    orderResponse?.order?.publicId ||
+                    orderResponse?.publicId ||
+                    null;
+                  if (!publicId) {
+                    throw new Error("Slant order missing publicId");
+                  }
+                  const processResponse = await slantRequest({
+                    endpoint: `/orders/${publicId}`,
+                    apiKey: slantKey,
+                    payload: {},
+                    method: "post",
+                  });
+                  await slantRef.set(
+                      {
+                        status: "processed",
+                        order: orderResponse,
+                        processed: processResponse,
+                        processedAt: admin.firestore.FieldValue.serverTimestamp(),
+                      },
+                      {merge: true},
+                  );
+                } catch (slantError) {
+                  console.error("Slant order processing failed", slantError);
+                  await slantRef.set(
+                      {
+                        status: "error",
+                        error: slantError.message || String(slantError),
+                        failedAt: admin.firestore.FieldValue.serverTimestamp(),
+                      },
+                      {merge: true},
+                  );
+                }
+              }
+            }
+          }
+
+          if (orderId) {
+            console.log(`Order ${orderId} marked as paid`);
+          }
         }
 
         // Handle async payment success
@@ -386,6 +548,72 @@ exports.stripeWebhook = onRequest(
         console.error("Webhook handler failed", err);
         return res.status(500).send("Webhook handler failed");
       }
+    },
+);
+
+exports.createSlantCheckout = onRequest(
+    {
+      region: "us-east1",
+      secrets: [stripeSecretKey],
+    },
+    async (req, res) => {
+      res.set("Access-Control-Allow-Origin", "*");
+      res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+      res.set("Access-Control-Allow-Headers", "Content-Type");
+      if (req.method === "OPTIONS") {
+        return res.status(204).send("");
+      }
+      if (req.method !== "POST") {
+        return res.status(405).json({success: false, message: "Method not allowed"});
+      }
+
+      const {orderId, amount, currency, successUrl, cancelUrl} = req.body || {};
+      if (!orderId || !amount || !successUrl || !cancelUrl) {
+        return res.status(400).json({
+          success: false,
+          message: "orderId, amount, successUrl, and cancelUrl are required.",
+        });
+      }
+
+      const stripeKey = stripeSecretKey.value();
+      if (!stripeKey) {
+        return res.status(500).json({success: false, message: "Stripe not configured."});
+      }
+
+      const stripe = new Stripe(stripeKey, {apiVersion: "2023-10-16"});
+      const amountInCents = Math.round(Number(amount) * 100);
+      if (!Number.isFinite(amountInCents) || amountInCents <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Amount must be a positive number.",
+        });
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        line_items: [
+          {
+            price_data: {
+              currency: currency || "usd",
+              unit_amount: amountInCents,
+              product_data: {
+                name: "3D Printing Order",
+              },
+            },
+            quantity: 1,
+          },
+        ],
+        metadata: {
+          slantOrderId: orderId,
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+        url: session.url,
+      });
     },
 );
 

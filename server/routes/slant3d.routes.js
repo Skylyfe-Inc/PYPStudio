@@ -85,6 +85,32 @@ const normalizeAddress = (input = {}, fallback = {}) => {
   };
 };
 
+const computeServiceCharge = (amount) => {
+  const base = Number(amount);
+  if (!Number.isFinite(base) || base <= 0) return null;
+  const serviceCharge = Number((base * 0.05).toFixed(2));
+  return {
+    baseAmount: Number(base.toFixed(2)),
+    serviceCharge,
+    totalWithServiceCharge: Number((base + serviceCharge).toFixed(2)),
+  };
+};
+
+const extractQuoteBaseAmount = (payload) => {
+  const data = payload || {};
+  const order = data.order || data;
+  const printingCost = Number(order?.printingCost ?? NaN);
+  const deliveryCost = Number(order?.deliveryCost ?? NaN);
+  if (Number.isFinite(printingCost) || Number.isFinite(deliveryCost)) {
+    return Number(
+      (Math.max(0, printingCost || 0) + Math.max(0, deliveryCost || 0)).toFixed(2),
+    );
+  }
+  const total =
+    Number(order?.total ?? order?.price ?? data?.total ?? data?.price ?? NaN);
+  return Number.isFinite(total) ? Number(total.toFixed(2)) : null;
+};
+
 
 // Shared Slant3D request helper with Bearer auth.
 const slantRequest = async ({ endpoint, apiKey, payload, method = "post" }) => {
@@ -154,6 +180,8 @@ router.post("/quote", async (req, res) => {
       apiKey,
       payload: orderPayload,
     });
+    const baseAmount = extractQuoteBaseAmount(response.data);
+    const serviceCharge = computeServiceCharge(baseAmount);
 
     try {
       await db.collection("slant3dQuotes").add({
@@ -163,6 +191,7 @@ router.post("/quote", async (req, res) => {
         filamentId,
         platformId,
         response: response.data,
+        serviceCharge,
         createdAt: new Date().toISOString(),
       });
     } catch (storageError) {
@@ -171,7 +200,10 @@ router.post("/quote", async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      result: response.data,
+      result: {
+        ...response.data,
+        serviceCharge,
+      },
     });
   } catch (error) {
     const status = error.response?.status || 500;

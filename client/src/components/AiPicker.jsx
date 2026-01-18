@@ -443,6 +443,11 @@ const AiPicker = ({
                     Waiting for STL before requesting a quote.
                   </p>
                 )}
+                {hasStl && !slantPublicFileServiceId && (
+                  <p className="mt-2 text-[11px] text-zinc-500">
+                    Uploading STL to Slant3D to generate a file ID…
+                  </p>
+                )}
                 {!hasSlantInputs && (
                   <p className="mt-2 text-[11px] text-zinc-500">
                     Set platform and filament IDs to enable quotes.
@@ -459,9 +464,27 @@ const AiPicker = ({
                   </p>
                 )}
                 {normalizedSlantQuote && (
-                  <p className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
-                    Quote ready. Review details in your order history.
-                  </p>
+                  <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-2 text-[10px] text-emerald-700">
+                    <p className="font-semibold uppercase tracking-wide">Quote ready</p>
+                    {normalizedSlantQuote?.serviceCharge ? (
+                      <div className="mt-1 space-y-1 text-[10px] text-emerald-700">
+                        <div className="flex justify-between">
+                          <span>Print + shipping</span>
+                          <span>${normalizedSlantQuote.serviceCharge.baseAmount}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Service fee (5%)</span>
+                          <span>${normalizedSlantQuote.serviceCharge.serviceCharge}</span>
+                        </div>
+                        <div className="flex justify-between font-semibold">
+                          <span>Total</span>
+                          <span>${normalizedSlantQuote.serviceCharge.totalWithServiceCharge}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-1">Review details in your order history.</p>
+                    )}
+                  </div>
                 )}
                 <div className="mt-4 space-y-3 rounded-lg border border-slate-200 bg-white/80 p-3">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
@@ -657,7 +680,7 @@ const AiPicker = ({
                         : "bg-slate-900 text-white hover:bg-slate-800"
                     }`}
                   >
-                    {slantOrderLoading ? "Placing order…" : "Place order"}
+                    {slantOrderLoading ? "Redirecting to payment…" : "Pay & Place Order"}
                   </button>
                   {!quoteReady && (
                     <p className="text-[11px] text-zinc-500">

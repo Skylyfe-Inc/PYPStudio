@@ -2,12 +2,12 @@ import { jest } from "@jest/globals";
 import express from "express";
 import request from "supertest";
 
-const axiosPost = jest.fn();
+const axiosMock = jest.fn();
 const addMock = jest.fn().mockResolvedValue({});
 const collectionMock = jest.fn(() => ({ add: addMock }));
 
 await jest.unstable_mockModule("axios", () => ({
-  default: { post: axiosPost },
+  default: axiosMock,
 }));
 
 await jest.unstable_mockModule("../utils/firebase.js", () => ({
@@ -25,7 +25,7 @@ const buildApp = () => {
 
 describe("Slant3D routes", () => {
   beforeEach(() => {
-    axiosPost.mockReset();
+    axiosMock.mockReset();
     addMock.mockClear();
     collectionMock.mockClear();
     delete process.env.SLANT_3D_API_KEY;
@@ -36,58 +36,88 @@ describe("Slant3D routes", () => {
     const app = buildApp();
     const response = await request(app)
       .post("/api/v1/slant3d/quote")
-      .send({
-        fileUrl: "https://example.com/model.stl",
-        fileName: "model.stl",
-      });
+      .send({ fileName: "model.stl" });
 
     expect(response.status).toBe(500);
     expect(response.body?.message).toMatch(/api key/i);
   });
 
-  it("rejects non-STL files for quotes", async () => {
+  it("rejects missing v2 identifiers for quotes", async () => {
     process.env.SLANT_3D_API_KEY = "test-key";
     const app = buildApp();
     const response = await request(app)
       .post("/api/v1/slant3d/quote")
       .send({
-        fileUrl: "https://example.com/model.obj",
-        fileName: "model.obj",
+        fileName: "model.stl",
       });
 
     expect(response.status).toBe(400);
-    expect(response.body?.message).toMatch(/only stl/i);
-    expect(axiosPost).not.toHaveBeenCalled();
+    expect(response.body?.message).toMatch(/publicfileserviceid/i);
+    expect(axiosMock).not.toHaveBeenCalled();
   });
 
-  it("submits a quote request with STL payload", async () => {
+  it("submits a v2 quote request with required payload", async () => {
     process.env.SLANT_3D_API_KEY = "test-key";
-    axiosPost.mockResolvedValueOnce({ data: { total: 12 } });
+    axiosMock.mockResolvedValueOnce({ data: { order: { publicId: "SLANT_123" } } });
     const app = buildApp();
 
     const response = await request(app)
       .post("/api/v1/slant3d/quote")
       .send({
-        fileUrl: "https://example.com/model.stl",
         fileName: "model.stl",
-        material: "PLA",
-        color: "black",
         quantity: 2,
+        publicFileServiceId: "file-123",
+        filamentId: "fil-123",
+        platformId: "platform-123",
       });
 
     expect(response.status).toBe(200);
     expect(response.body?.success).toBe(true);
-    expect(axiosPost).toHaveBeenCalledTimes(1);
-    const [url, payload] = axiosPost.mock.calls[0];
-    expect(url).toMatch(/order\/estimate$/);
-    expect(payload).toEqual([
-      {
-        filename: "model.stl",
-        fileURL: "https://example.com/model.stl",
-        order_quantity: "2",
-        order_item_color: "black",
-        profile: "PLA",
-      },
-    ]);
+    expect(axiosMock).toHaveBeenCalledTimes(1);
+    const [requestConfig] = axiosMock.mock.calls[0];
+    expect(requestConfig.url).toMatch(/\\/orders$/);
+    expect(requestConfig.headers.Authorization).toMatch(/Bearer/);
+    expect(requestConfig.data.items[0]).toMatchObject({
+      type: "PRINT",
+      publicFileServiceId: "file-123",
+      filamentId: "fil-123",
+      quantity: 2,
+      name: "model.stl",
+    });
+  });
+
+  it("uploads a file to Slant3D using the server upload endpoint", async () => {
+    process.env.SLANT_3D_API_KEY = "test-key";
+    axiosMock.mockResolvedValueOnce({ data: { data: { publicFileServiceId: "pf-1" } } });
+    const app = buildApp();
+
+    const response = await request(app)
+      .post("/api/v1/slant3d/files/upload")
+      .send({
+        fileUrl: "https://example.com/model.stl",
+        fileName: "model.stl",
+        platformId: "platform-123",
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body?.success).toBe(true);
+    const [requestConfig] = axiosMock.mock.calls[0];
+    expect(requestConfig.url).toMatch(/\\/files$/);
+    expect(requestConfig.data).toMatchObject({
+      url: "https://example.com/model.stl",
+      name: "model.stl",
+      platformId: "platform-123",
+    });
+  });
+
+  it("returns 400 when order creation is missing IDs", async () => {
+    process.env.SLANT_3D_API_KEY = "test-key";
+    const app = buildApp();
+    const response = await request(app)
+      .post("/api/v1/slant3d/order")
+      .send({ fileName: "model.stl", quantity: 1 });
+
+    expect(response.status).toBe(400);
+    expect(response.body?.message).toMatch(/publicfileserviceid/i);
   });
 });

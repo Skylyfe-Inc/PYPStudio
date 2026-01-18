@@ -33,6 +33,9 @@ import {
   RotationControl,
 } from "../components/index.js";
 import { toastNotify } from "../components/Toast";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
+import app from "../config/firebase";
 import { getCurrentUserOrThrow } from "../lib/stripePayments";
 
 const STORAGE_KEY = "customizer_payload";
@@ -251,6 +254,7 @@ const Customizer = () => {
   const [slantOrder, setSlantOrder] = useState(null);
   const [slantOrderError, setSlantOrderError] = useState("");
   const [slantOrderLoading, setSlantOrderLoading] = useState(false);
+  const [slantCheckoutError, setSlantCheckoutError] = useState("");
   const [slantContact, setSlantContact] = useState({
     name: "",
     email: "",
@@ -909,7 +913,7 @@ const Customizer = () => {
             onSlantQuote={handleSlantQuote}
             slantOrder={slantOrder}
             slantOrderLoading={slantOrderLoading}
-            slantOrderError={slantOrderError}
+            slantOrderError={slantOrderError || slantCheckoutError}
             slantContact={slantContact}
             setSlantContact={setSlantContact}
             slantShipping={slantShipping}
@@ -1234,6 +1238,19 @@ const Customizer = () => {
     return "";
   };
 
+  const buildSlantOrderDraft = (publicFileServiceId) => ({
+    fileName: meshyStlName,
+    quantity: slantQuantity,
+    contact: slantContact,
+    shipping: slantShipping,
+    publicFileServiceId,
+    filamentId: slantFilamentId,
+    platformId: slantPlatformId,
+    itemName: slantItemName,
+    sku: slantSku,
+    metadata: slantMetadata ? { note: slantMetadata } : null,
+  });
+
   const handleSlantOrder = async () => {
     const validationMessage = validateSlantOrder();
     if (validationMessage) {
@@ -1244,6 +1261,7 @@ const Customizer = () => {
     setSlantOrderError("");
     setSlantOrderLoading(true);
     setSlantOrder(null);
+    setSlantCheckoutError("");
 
     try {
       // Ensure STL is registered with Slant before placing/processing an order.
@@ -1277,34 +1295,52 @@ const Customizer = () => {
         publicFileServiceId = publicId;
         setSlantPublicFileServiceId(publicId);
       }
+      const orderDraft = buildSlantOrderDraft(publicFileServiceId);
+      const db = getFirestore(app);
+      const orderRef = await addDoc(collection(db, "slantOrders"), {
+        ...orderDraft,
+        status: "pending_payment",
+        createdAt: serverTimestamp(),
+      });
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/slant3d/order`, {
+      const totalWithServiceCharge =
+        slantQuote?.serviceCharge?.totalWithServiceCharge ||
+        slantQuote?.result?.serviceCharge?.totalWithServiceCharge ||
+        slantQuote?.data?.serviceCharge?.totalWithServiceCharge ||
+        null;
+
+      if (!totalWithServiceCharge) {
+        throw new Error("Quote total is missing. Please request a quote again.");
+      }
+
+      const functionsBase =
+        import.meta.env.VITE_FUNCTIONS_BASE_URL ||
+        `https://us-east1-${import.meta.env.VITE_FIREBASE_PROJECT_ID}.cloudfunctions.net`;
+      const successUrl = `${window.location.origin}/checkout/success?slantOrderId=${orderRef.id}`;
+      const cancelUrl = `${window.location.origin}/customizer`;
+
+      const checkoutResponse = await fetch(`${functionsBase}/createSlantCheckout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fileName: meshyStlName,
-          quantity: slantQuantity,
-          contact: slantContact,
-          shipping: slantShipping,
-          publicFileServiceId,
-          filamentId: slantFilamentId,
-          platformId: slantPlatformId,
-          itemName: slantItemName,
-          sku: slantSku,
-          metadata: slantMetadata ? { note: slantMetadata } : null,
+          orderId: orderRef.id,
+          amount: totalWithServiceCharge,
+          currency: "usd",
+          successUrl,
+          cancelUrl,
         }),
       });
-
-      const data = await response.json();
-
-      if (!response.ok || data?.success === false) {
-        const message = data?.message || `Request failed with status ${response.status}`;
+      const checkoutData = await checkoutResponse.json();
+      if (!checkoutResponse.ok || checkoutData?.success === false || !checkoutData?.url) {
+        const message =
+          checkoutData?.message || `Checkout failed with status ${checkoutResponse.status}`;
         throw new Error(message);
       }
 
-      setSlantOrder(data?.result ?? data);
+      window.location.assign(checkoutData.url);
     } catch (error) {
       setSlantOrderError(error instanceof Error ? error.message : String(error));
+      setSlantCheckoutError(error instanceof Error ? error.message : String(error));
     } finally {
       setSlantOrderLoading(false);
     }
@@ -1797,7 +1833,7 @@ const Customizer = () => {
       onSlantQuote={handleSlantQuote}
       slantOrder={slantOrder}
       slantOrderLoading={slantOrderLoading}
-      slantOrderError={slantOrderError}
+      slantOrderError={slantOrderError || slantCheckoutError}
       slantContact={slantContact}
       setSlantContact={setSlantContact}
       slantShipping={slantShipping}

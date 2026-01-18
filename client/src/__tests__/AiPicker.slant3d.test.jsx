@@ -13,6 +13,17 @@ const baseProps = {
   setPrompt: () => {},
   onMeshySubmit: () => {},
   meshyTask: { task_id: "task-1", status: "succeeded", progress: 100 },
+  slantPlatformId: "platform-1",
+  slantFilamentId: "filament-1",
+  slantContact: { name: "Test User", email: "test@example.com", phone: "" },
+  slantShipping: {
+    street: "123 Main",
+    city: "City",
+    state: "ST",
+    zip: "12345",
+    country: "US",
+    isUSResidential: true,
+  },
 };
 
 describe("AiPicker Slant3D flow", () => {
@@ -26,7 +37,7 @@ describe("AiPicker Slant3D flow", () => {
     expect(quoteButton).toBeDisabled();
   });
 
-  it("enables the quote button when an STL is available", () => {
+  it("enables the quote button when requirements are met", () => {
     render(<AiPicker {...baseProps} meshyStlUrl="https://assets.meshy.ai/test.stl" />);
 
     const quoteButton = screen.getByRole("button", {
@@ -36,7 +47,7 @@ describe("AiPicker Slant3D flow", () => {
     expect(quoteButton).toBeEnabled();
   });
 
-  it("shows the STL processing indicator when the model is ready but STL is not", () => {
+  it("shows the STL not ready status when the model is ready but STL is not", () => {
     render(
       <AiPicker
         {...baseProps}
@@ -46,7 +57,7 @@ describe("AiPicker Slant3D flow", () => {
     );
 
     expect(
-      screen.getByText(/stl is processing/i),
+      screen.getByText(/stl not ready yet/i),
     ).toBeInTheDocument();
   });
 });
