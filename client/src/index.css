@@ -112,6 +112,42 @@ body {
   @apply w-full resize-none rounded-lg border-2 border-zinc-900 bg-white text-sm text-slate-800 p-3 shadow-inner placeholder:text-slate-500;
 }
 
+.meshy-scanline {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.9), transparent);
+  animation: meshy-scan 2.2s ease-in-out infinite;
+}
+
+.meshy-scanline-glow {
+  position: absolute;
+  left: 5%;
+  right: 5%;
+  top: 0;
+  height: 18px;
+  background: radial-gradient(circle, rgba(239, 68, 68, 0.22), transparent 60%);
+  filter: blur(2px);
+  animation: meshy-scan 2.2s ease-in-out infinite;
+}
+
+@keyframes meshy-scan {
+  0% {
+    transform: translateY(10%);
+    opacity: 0.2;
+  }
+  50% {
+    transform: translateY(55%);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(10%);
+    opacity: 0.2;
+  }
+}
+
 .aipicker-grid {
   @apply relative flex-1 grid grid-cols-3 gap-2;
 }

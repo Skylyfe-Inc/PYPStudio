@@ -33,6 +33,7 @@ import {
   RotationControl,
 } from "../components/index.js";
 import { toastNotify } from "../components/Toast";
+import { getCurrentUserOrThrow } from "../lib/stripePayments";
 
 const STORAGE_KEY = "customizer_payload";
 const SAVED_DESIGNS_KEY = "pyp_saved_designs";
@@ -272,6 +273,19 @@ const Customizer = () => {
     isUSResidential: true,
   });
   const [slantUseShippingForBilling, setSlantUseShippingForBilling] = useState(true);
+  // Defaults are pulled from env to reduce friction for MVP ordering.
+  const [slantPlatformId, setSlantPlatformId] = useState(
+    import.meta.env.VITE_SLANT3D_PLATFORM_ID || "",
+  );
+  const [slantFilamentId, setSlantFilamentId] = useState(
+    import.meta.env.VITE_SLANT3D_FILAMENT_ID || "",
+  );
+  const [slantPublicFileServiceId, setSlantPublicFileServiceId] = useState("");
+  const [slantFilaments, setSlantFilaments] = useState([]);
+  const [slantFilamentsError, setSlantFilamentsError] = useState("");
+  const [slantItemName, setSlantItemName] = useState("");
+  const [slantSku, setSlantSku] = useState("");
+  const [slantMetadata, setSlantMetadata] = useState("");
   const meshyPollRef = useRef(null);
   const meshyConvertRef = useRef({ taskId: null, inFlight: false });
   const terminalMeshyStatuses = useMemo(
@@ -390,6 +404,49 @@ const Customizer = () => {
       }
     };
   }, []);
+
+  useEffect(() => {
+    // Load available filaments for the dropdown when platform ID is available.
+    const fetchFilaments = async () => {
+      if (!slantPlatformId) return;
+      setSlantFilamentsError("");
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/slant3d/filaments`);
+        const data = await response.json();
+        if (!response.ok || data?.success === false) {
+          throw new Error(data?.message || `Filament request failed with ${response.status}`);
+        }
+        const entries = data?.result?.data || data?.result || [];
+        const normalized = Array.isArray(entries) ? entries : [];
+        setSlantFilaments(normalized);
+      } catch (error) {
+        setSlantFilamentsError(error instanceof Error ? error.message : String(error));
+      }
+    };
+
+    fetchFilaments();
+  }, [slantPlatformId]);
+
+  useEffect(() => {
+    try {
+      // Pre-fill contact info from the signed-in Firebase user (if present).
+      const user = getCurrentUserOrThrow();
+      if (!slantContact.name && user.displayName) {
+        setSlantContact((prev) => ({
+          ...prev,
+          name: user.displayName,
+        }));
+      }
+      if (!slantContact.email && user.email) {
+        setSlantContact((prev) => ({
+          ...prev,
+          email: user.email,
+        }));
+      }
+    } catch (error) {
+      // User not signed in; keep fields empty.
+    }
+  }, [slantContact.name, slantContact.email]);
 
   useEffect(() => {
     return () => {
@@ -861,6 +918,20 @@ const Customizer = () => {
             setSlantBilling={setSlantBilling}
             slantUseShippingForBilling={slantUseShippingForBilling}
             setSlantUseShippingForBilling={setSlantUseShippingForBilling}
+            slantPlatformId={slantPlatformId}
+            setSlantPlatformId={setSlantPlatformId}
+            slantFilamentId={slantFilamentId}
+            setSlantFilamentId={setSlantFilamentId}
+            slantPublicFileServiceId={slantPublicFileServiceId}
+            setSlantPublicFileServiceId={setSlantPublicFileServiceId}
+            slantItemName={slantItemName}
+            setSlantItemName={setSlantItemName}
+            slantSku={slantSku}
+            setSlantSku={setSlantSku}
+            slantMetadata={slantMetadata}
+            setSlantMetadata={setSlantMetadata}
+            slantFilaments={slantFilaments}
+            slantFilamentsError={slantFilamentsError}
             onSlantOrder={handleSlantOrder}
           />
         );
@@ -1048,24 +1119,62 @@ const Customizer = () => {
   };
 
   const handleSlantQuote = async () => {
-    if (!meshyStlUrl) {
-      setSlantError("Meshy STL file is not available yet.");
+    const validationMessage = validateSlantOrder();
+    if (validationMessage) {
+      setSlantError(validationMessage);
       return;
     }
 
     setSlantError("");
     setSlantLoading(true);
+    setSlantQuote(null);
 
     try {
+      // If we don't have a Slant public file id yet, upload the STL to Slant first.
+      let publicFileServiceId = slantPublicFileServiceId;
+      if (!publicFileServiceId) {
+        if (!meshyStlUrl) {
+          throw new Error("STL is not ready yet. Please wait for conversion.");
+        }
+        const uploadResponse = await fetch(`${API_BASE_URL}/api/v1/slant3d/files/upload`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileUrl: meshyStlUrl,
+            fileName: meshyStlName,
+            platformId: slantPlatformId,
+          }),
+        });
+        const uploadData = await uploadResponse.json();
+        if (!uploadResponse.ok || uploadData?.success === false) {
+          const message =
+            uploadData?.message || `File upload failed with status ${uploadResponse.status}`;
+          throw new Error(message);
+        }
+        const publicId =
+          uploadData?.result?.data?.filePlaceholder?.publicFileServiceId ||
+          uploadData?.result?.data?.publicFileServiceId ||
+          uploadData?.result?.publicFileServiceId;
+        if (!publicId) {
+          throw new Error("Slant 3D did not return a public file service ID.");
+        }
+        publicFileServiceId = publicId;
+        setSlantPublicFileServiceId(publicId);
+      }
       const response = await fetch(`${API_BASE_URL}/api/v1/slant3d/quote`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fileUrl: meshyStlUrl,
           fileName: meshyStlName,
-          material: slantMaterial,
-          color: slantColor,
           quantity: slantQuantity,
+          contact: slantContact,
+          shipping: slantShipping,
+          publicFileServiceId,
+          filamentId: slantFilamentId,
+          platformId: slantPlatformId,
+          itemName: slantItemName,
+          sku: slantSku,
+          metadata: slantMetadata ? { note: slantMetadata } : null,
         }),
       });
 
@@ -1088,7 +1197,19 @@ const Customizer = () => {
     if (!meshyStlUrl) {
       return "Meshy STL file is not available yet.";
     }
-    const requiredContact = ["name", "email", "phone"];
+    if (!meshyStlName) {
+      return "Missing STL file name.";
+    }
+    if (!slantPlatformId.trim()) {
+      return "Missing platform ID.";
+    }
+    if (!slantFilamentId.trim()) {
+      return "Missing filament ID.";
+    }
+    if (!slantPlatformId.trim()) {
+      return "Missing platform ID.";
+    }
+    const requiredContact = ["name", "email"];
     const requiredAddress = ["street", "city", "state", "zip", "country"];
     const missingContact = requiredContact.filter(
       (key) => !String(slantContact?.[key] || "").trim(),
@@ -1122,20 +1243,55 @@ const Customizer = () => {
 
     setSlantOrderError("");
     setSlantOrderLoading(true);
+    setSlantOrder(null);
 
     try {
+      // Ensure STL is registered with Slant before placing/processing an order.
+      let publicFileServiceId = slantPublicFileServiceId;
+      if (!publicFileServiceId) {
+        if (!meshyStlUrl) {
+          throw new Error("STL is not ready yet. Please wait for conversion.");
+        }
+        const uploadResponse = await fetch(`${API_BASE_URL}/api/v1/slant3d/files/upload`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileUrl: meshyStlUrl,
+            fileName: meshyStlName,
+            platformId: slantPlatformId,
+          }),
+        });
+        const uploadData = await uploadResponse.json();
+        if (!uploadResponse.ok || uploadData?.success === false) {
+          const message =
+            uploadData?.message || `File upload failed with status ${uploadResponse.status}`;
+          throw new Error(message);
+        }
+        const publicId =
+          uploadData?.result?.data?.filePlaceholder?.publicFileServiceId ||
+          uploadData?.result?.data?.publicFileServiceId ||
+          uploadData?.result?.publicFileServiceId;
+        if (!publicId) {
+          throw new Error("Slant 3D did not return a public file service ID.");
+        }
+        publicFileServiceId = publicId;
+        setSlantPublicFileServiceId(publicId);
+      }
+
       const response = await fetch(`${API_BASE_URL}/api/v1/slant3d/order`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fileUrl: meshyStlUrl,
           fileName: meshyStlName,
-          material: slantMaterial,
-          color: slantColor,
           quantity: slantQuantity,
           contact: slantContact,
           shipping: slantShipping,
-          billing: slantUseShippingForBilling ? slantShipping : slantBilling,
+          publicFileServiceId,
+          filamentId: slantFilamentId,
+          platformId: slantPlatformId,
+          itemName: slantItemName,
+          sku: slantSku,
+          metadata: slantMetadata ? { note: slantMetadata } : null,
         }),
       });
 
@@ -1650,6 +1806,20 @@ const Customizer = () => {
       setSlantBilling={setSlantBilling}
       slantUseShippingForBilling={slantUseShippingForBilling}
       setSlantUseShippingForBilling={setSlantUseShippingForBilling}
+      slantPlatformId={slantPlatformId}
+      setSlantPlatformId={setSlantPlatformId}
+      slantFilamentId={slantFilamentId}
+      setSlantFilamentId={setSlantFilamentId}
+      slantPublicFileServiceId={slantPublicFileServiceId}
+      setSlantPublicFileServiceId={setSlantPublicFileServiceId}
+      slantItemName={slantItemName}
+      setSlantItemName={setSlantItemName}
+      slantSku={slantSku}
+      setSlantSku={setSlantSku}
+      slantMetadata={slantMetadata}
+      setSlantMetadata={setSlantMetadata}
+      slantFilaments={slantFilaments}
+      slantFilamentsError={slantFilamentsError}
       onSlantOrder={handleSlantOrder}
     />
   );

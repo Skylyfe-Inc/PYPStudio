@@ -4,32 +4,60 @@ import { db } from "../utils/firebase.js";
 
 const router = Router();
 
+// Slant3D v2 base URL (override via env for staging).
 const SLANT3D_BASE_URL =
-  process.env.SLANT3D_API_BASE || "https://api.slant3d.com/api";
+  process.env.SLANT3D_API_BASE || "https://slant3dapi.com/v2/api";
+const SLANT3D_FILE_UPLOAD_PATH =
+  process.env.SLANT3D_FILE_UPLOAD_PATH || "/files";
 
 const resolveApiKey = () =>
   process.env.SLANT_3D_API_KEY || process.env.SLANT3D_API_KEY;
 
-const isStlFile = (fileUrl, fileName) => {
-  const url = (fileUrl || "").toLowerCase();
-  const name = (fileName || "").toLowerCase();
-  return url.endsWith(".stl") || name.endsWith(".stl");
-};
-
-const buildLineItem = ({
-  fileUrl,
+// v2 order payload: customer + items (PRINT) + optional metadata.
+const buildOrderPayload = ({
   fileName,
   quantity,
-  color,
-  material,
-}) => ({
-  filename: fileName,
-  fileURL: fileUrl,
-  order_item_name: fileName || "3D Model",
-  order_quantity: String(quantity),
-  order_item_color: color,
-  profile: material,
-});
+  contact,
+  shipping,
+  publicFileServiceId,
+  filamentId,
+  platformId,
+  itemName,
+  sku,
+  metadata,
+}) => {
+  const contactInfo = normalizeAddress(contact || {});
+  const shipTo = normalizeAddress(shipping || {}, contactInfo);
+
+  return {
+    customer: {
+      platformId: platformId || undefined,
+      details: {
+        email: contactInfo.email,
+        address: {
+          name: contactInfo.name || shipTo.name,
+          line1: shipTo.street,
+          line2: "",
+          city: shipTo.city,
+          state: shipTo.state,
+          zip: shipTo.zip,
+          country: shipTo.country,
+        },
+      },
+    },
+    items: [
+      {
+        type: "PRINT",
+        publicFileServiceId,
+        filamentId,
+        quantity: Number(quantity) || 1,
+        name: itemName || fileName || "3D Model",
+        SKU: sku || undefined,
+      },
+    ],
+    metadata: metadata || undefined,
+  };
+};
 
 const normalizeAddress = (input = {}, fallback = {}) => {
   const address =
@@ -57,69 +85,21 @@ const normalizeAddress = (input = {}, fallback = {}) => {
   };
 };
 
-const buildOrderPayload = ({
-  fileUrl,
-  fileName,
-  quantity,
-  color,
-  material,
-  shipping,
-  contact,
-  billing,
-}) => {
-  const contactInfo = normalizeAddress(contact || {});
-  const shipTo = normalizeAddress(shipping || {}, contactInfo);
-  const billTo = normalizeAddress(billing || shipping || {}, contactInfo);
-  const lineItem = buildLineItem({
-    fileUrl,
-    fileName,
-    quantity,
-    color,
-    material,
-  });
 
-  return [
-    {
-      name: contactInfo.name,
-      email: contactInfo.email,
-      phone: contactInfo.phone,
-      filename: fileName,
-      fileURL: fileUrl,
-      bill_to_name: billTo.name,
-      bill_to_email: billTo.email,
-      bill_to_phone: billTo.phone,
-      bill_to_street_1: billTo.street,
-      bill_to_city: billTo.city,
-      bill_to_state: billTo.state,
-      bill_to_zip: billTo.zip,
-      bill_to_country_as_iso: billTo.country,
-      bill_to_is_US_residential: String(billTo.isUSResidential),
-      ship_to_name: shipTo.name,
-      ship_to_email: shipTo.email,
-      ship_to_phone: shipTo.phone,
-      ship_to_street_1: shipTo.street,
-      ship_to_city: shipTo.city,
-      ship_to_state: shipTo.state,
-      ship_to_zip: shipTo.zip,
-      ship_to_country_as_iso: shipTo.country,
-      ship_to_is_US_residential: String(shipTo.isUSResidential),
-      order_item_name: lineItem.order_item_name,
-      order_quantity: lineItem.order_quantity,
-      order_item_color: lineItem.order_item_color,
-      profile: lineItem.profile,
-    },
-  ];
-};
-
-const slantRequest = async ({ endpoint, apiKey, payload }) => {
-  return axios.post(`${SLANT3D_BASE_URL}${endpoint}`, payload, {
+// Shared Slant3D request helper with Bearer auth.
+const slantRequest = async ({ endpoint, apiKey, payload, method = "post" }) => {
+  return axios({
+    method,
+    url: `${SLANT3D_BASE_URL}${endpoint}`,
+    data: payload ?? undefined,
     headers: {
       "Content-Type": "application/json",
-      "api-key": apiKey,
+      Authorization: `Bearer ${apiKey}`,
     },
   });
 };
 
+// Creates a draft order (used as a "quote" in v2).
 router.post("/quote", async (req, res) => {
   const apiKey = resolveApiKey();
   if (!apiKey) {
@@ -130,48 +110,58 @@ router.post("/quote", async (req, res) => {
   }
 
   const {
-    fileUrl,
     fileName,
-    material = "PLA",
-    color = "black",
     quantity = 1,
+    contact = null,
+    shipping = null,
+    publicFileServiceId = null,
+    filamentId = null,
+    platformId = null,
+    itemName = null,
+    sku = null,
+    metadata = null,
   } = req.body || {};
 
-  if (!fileUrl || !fileName) {
+  if (!fileName) {
     return res.status(400).json({
       success: false,
-      message: "fileUrl and fileName are required to request a quote.",
+      message: "fileName is required to request a quote.",
     });
   }
 
-  if (!isStlFile(fileUrl, fileName)) {
+  if (!publicFileServiceId || !filamentId || !platformId) {
     return res.status(400).json({
       success: false,
-      message: "Only STL files are supported for Slant 3D quotes.",
+      message: "publicFileServiceId, filamentId, and platformId are required.",
     });
   }
 
   try {
-    const lineItem = buildLineItem({
-      fileUrl,
+    const orderPayload = buildOrderPayload({
       fileName,
       quantity,
-      color,
-      material,
+      contact,
+      shipping,
+      publicFileServiceId,
+      filamentId,
+      platformId,
+      itemName,
+      sku,
+      metadata,
     });
     const response = await slantRequest({
-      endpoint: "/order/estimate",
+      endpoint: "/orders",
       apiKey,
-      payload: [lineItem],
+      payload: orderPayload,
     });
 
     try {
       await db.collection("slant3dQuotes").add({
-        fileUrl,
         fileName,
-        material,
-        color,
         quantity,
+        publicFileServiceId,
+        filamentId,
+        platformId,
         response: response.data,
         createdAt: new Date().toISOString(),
       });
@@ -189,7 +179,7 @@ router.post("/quote", async (req, res) => {
       error.response?.data?.message ||
       error.response?.data?.error ||
       error.message ||
-      "Failed to fetch Slant 3D quote.";
+      "Failed to create Slant 3D order draft.";
 
     return res.status(status).json({
       success: false,
@@ -199,6 +189,111 @@ router.post("/quote", async (req, res) => {
   }
 });
 
+// Fetch available filament options for the picker UI.
+router.get("/filaments", async (req, res) => {
+  const apiKey = resolveApiKey();
+  if (!apiKey) {
+    return res.status(500).json({
+      success: false,
+      message: "Slant 3D API key is not configured on the server.",
+    });
+  }
+
+  try {
+    const response = await slantRequest({
+      endpoint: "/filaments",
+      apiKey,
+      payload: null,
+      method: "get",
+    });
+
+    return res.status(200).json({
+      success: true,
+      result: response.data,
+    });
+  } catch (error) {
+    const status = error.response?.status || 500;
+    const message =
+      error.response?.data?.message ||
+      error.response?.data?.error ||
+      error.message ||
+      "Failed to fetch Slant 3D filaments.";
+
+    return res.status(status).json({
+      success: false,
+      message,
+      details: error.response?.data || null,
+    });
+  }
+});
+
+// Server-side file upload: Slant downloads the STL from a public URL.
+router.post("/files/upload", async (req, res) => {
+  const apiKey = resolveApiKey();
+  if (!apiKey) {
+    return res.status(500).json({
+      success: false,
+      message: "Slant 3D API key is not configured on the server.",
+    });
+  }
+
+  const { fileUrl, fileName, platformId, ownerId } = req.body || {};
+
+  if (!fileUrl || !fileName || !platformId) {
+    return res.status(400).json({
+      success: false,
+      message: "fileUrl, fileName, and platformId are required to upload a file.",
+    });
+  }
+
+  try {
+    const payload = {
+      url: fileUrl,
+      name: fileName,
+      platformId,
+      ownerId: ownerId || undefined,
+    };
+
+    const response = await slantRequest({
+      endpoint: SLANT3D_FILE_UPLOAD_PATH,
+      apiKey,
+      payload,
+    });
+
+    try {
+      await db.collection("slant3dFiles").add({
+        fileUrl,
+        fileName,
+        platformId,
+        ownerId: ownerId || null,
+        response: response.data,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (storageError) {
+      console.warn("Failed to store Slant 3D file upload", storageError);
+    }
+
+    return res.status(200).json({
+      success: true,
+      result: response.data,
+    });
+  } catch (error) {
+    const status = error.response?.status || 500;
+    const message =
+      error.response?.data?.message ||
+      error.response?.data?.error ||
+      error.message ||
+      "Failed to upload file to Slant 3D.";
+
+    return res.status(status).json({
+      success: false,
+      message,
+      details: error.response?.data || null,
+    });
+  }
+});
+
+// Creates and processes an order, or processes an existing publicOrderId.
 router.post("/order", async (req, res) => {
   const apiKey = resolveApiKey();
   if (!apiKey) {
@@ -209,78 +304,115 @@ router.post("/order", async (req, res) => {
   }
 
   const {
-    fileUrl,
     fileName,
-    material = "PLA",
-    color = "black",
     quantity = 1,
     shipping = null,
     contact = null,
-    billing = null,
+    publicFileServiceId = null,
+    filamentId = null,
+    platformId = null,
+    itemName = null,
+    sku = null,
+    metadata = null,
+    publicOrderId = null,
   } = req.body || {};
 
-  if (!fileUrl || !fileName) {
-    return res.status(400).json({
-      success: false,
-      message: "fileUrl and fileName are required to place an order.",
-    });
-  }
-
-  if (!isStlFile(fileUrl, fileName)) {
-    return res.status(400).json({
-      success: false,
-      message: "Only STL files are supported for Slant 3D orders.",
-    });
-  }
-
   try {
-    const orderPayload = buildOrderPayload({
-      fileUrl,
-      fileName,
-      quantity,
-      color,
-      material,
-      shipping,
-      contact,
-      billing,
-    });
-    const [orderEntry] = orderPayload;
-    const requiredFields = [
-      "bill_to_street_1",
-      "bill_to_city",
-      "bill_to_state",
-      "bill_to_zip",
-      "bill_to_country_as_iso",
-      "ship_to_street_1",
-      "ship_to_city",
-      "ship_to_state",
-      "ship_to_zip",
-      "ship_to_country_as_iso",
-    ];
-    const missing = requiredFields.filter((key) => !orderEntry?.[key]);
-    if (missing.length) {
-      return res.status(400).json({
-        success: false,
-        message: `Missing required shipping/billing fields: ${missing.join(", ")}`,
+    let orderResponse = null;
+    let processResponse = null;
+
+    if (publicOrderId) {
+      processResponse = await slantRequest({
+        endpoint: `/orders/${publicOrderId}`,
+        apiKey,
+        payload: {},
+        method: "post",
+      });
+    } else {
+      if (!fileName) {
+        return res.status(400).json({
+          success: false,
+          message: "fileName is required to place an order.",
+        });
+      }
+
+      if (!publicFileServiceId || !filamentId || !platformId) {
+        return res.status(400).json({
+          success: false,
+          message: "publicFileServiceId, filamentId, and platformId are required.",
+        });
+      }
+
+      const contactInfo = normalizeAddress(contact || {});
+      const shipTo = normalizeAddress(shipping || {}, contactInfo);
+      const requiredAddress = ["street", "city", "state", "zip", "country"];
+      const missingContact = ["name", "email"].filter(
+        (key) => !String(contactInfo[key] || "").trim(),
+      );
+      const missingShipping = requiredAddress.filter(
+        (key) => !String(shipTo[key] || "").trim(),
+      );
+
+      if (missingContact.length || missingShipping.length) {
+        return res.status(400).json({
+          success: false,
+          message: `Missing contact/shipping fields: ${[
+            ...missingContact.map((key) => `contact.${key}`),
+            ...missingShipping.map((key) => `shipping.${key}`),
+          ].join(", ")}`,
+        });
+      }
+
+      const orderPayload = buildOrderPayload({
+        fileName,
+        quantity,
+        contact,
+        shipping,
+        publicFileServiceId,
+        filamentId,
+        platformId,
+        itemName,
+        sku,
+        metadata,
+      });
+
+      orderResponse = await slantRequest({
+        endpoint: "/orders",
+        apiKey,
+        payload: orderPayload,
+      });
+
+      const publicId =
+        orderResponse?.data?.order?.publicId ||
+        orderResponse?.data?.publicId ||
+        null;
+
+      if (!publicId) {
+        return res.status(502).json({
+          success: false,
+          message: "Slant 3D did not return a public order id.",
+        });
+      }
+
+      processResponse = await slantRequest({
+        endpoint: `/orders/${publicId}`,
+        apiKey,
+        payload: {},
+        method: "post",
       });
     }
-    const response = await slantRequest({
-      endpoint: "/order",
-      apiKey,
-      payload: orderPayload,
-    });
 
     try {
       await db.collection("slant3dOrders").add({
-        fileUrl,
         fileName,
-        material,
-        color,
         quantity,
         shipping,
         contact,
-        billing,
-        response: response.data,
+        publicFileServiceId,
+        filamentId,
+        platformId,
+        order: orderResponse?.data || null,
+        processed: processResponse?.data || null,
         createdAt: new Date().toISOString(),
       });
     } catch (storageError) {
@@ -289,7 +421,10 @@ router.post("/order", async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      result: response.data,
+      result: {
+        order: orderResponse?.data || null,
+        processed: processResponse?.data || null,
+      },
     });
   } catch (error) {
     const status = error.response?.status || 500;

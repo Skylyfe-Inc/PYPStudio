@@ -11,6 +11,7 @@ import { firebase_admin } from "../utils/firebase.js";
 const router = express.Router();
 const execFileAsync = promisify(execFile);
 const STL_TTL_MS = 60 * 60 * 1000;
+// Tracks converted STL uploads to clean up temp files and generate short-lived URLs.
 const stlCache = new Map();
 
 const cleanupStlCache = async () => {
@@ -258,11 +259,13 @@ router.post("/convert/glb-to-stl", async (req, res) => {
     });
   }
 
+  // Best-effort cleanup to keep tmp storage and signed URLs tidy.
   await cleanupStlCache();
 
   const bucketName =
     process.env.FIREBASE_STORAGE_BUCKET ||
-    firebase_admin.app().options.storageBucket;
+    process.env.VITE_FIREBASE_STORAGE_BUCKET ||
+    firebase_admin.options.storageBucket;
   if (!bucketName) {
     return res.status(500).json({
       success: false,
@@ -275,6 +278,7 @@ router.post("/convert/glb-to-stl", async (req, res) => {
   const stlPath = path.join(os.tmpdir(), `meshy-${id}.stl`);
 
   try {
+    // Download GLB locally so assimp can convert it.
     const response = await axios.get(normalizedUrl, { responseType: "arraybuffer" });
     await fs.writeFile(glbPath, response.data);
   } catch (error) {
@@ -286,6 +290,7 @@ router.post("/convert/glb-to-stl", async (req, res) => {
   }
 
   try {
+    // assimp CLI is required on the server to convert GLB -> STL.
     await execFileAsync("assimp", ["export", glbPath, stlPath, "-f", "stl"]);
   } catch (error) {
     const code = error?.code || "";
@@ -332,6 +337,7 @@ router.post("/convert/glb-to-stl", async (req, res) => {
 
   stlCache.set(id, { storagePath, createdAt: Date.now() });
 
+  // Signed URL lets Slant3D download the STL without opening storage publicly.
   const [signedUrl] = await bucket.file(storagePath).getSignedUrl({
     action: "read",
     expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
@@ -367,7 +373,8 @@ router.get("/convert/glb-to-stl/:id", async (req, res) => {
 
   const bucketName =
     process.env.FIREBASE_STORAGE_BUCKET ||
-    firebase_admin.app().options.storageBucket;
+    process.env.VITE_FIREBASE_STORAGE_BUCKET ||
+    firebase_admin.options.storageBucket;
   if (!bucketName) {
     return res.status(500).json({
       success: false,
@@ -394,6 +401,7 @@ router.get("/proxy", async (req, res) => {
   }
 
   const normalized = url.trim();
+  // Only proxy Meshy-hosted assets to prevent SSRF.
   if (!/^https:\/\/assets\.meshy\.ai\//i.test(normalized)) {
     return res.status(400).json({
       success: false,

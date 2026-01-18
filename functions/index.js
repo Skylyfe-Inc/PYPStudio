@@ -51,6 +51,7 @@ const parseDataUrl = (dataUrl) => {
   return {mime: match[1], data: match[2]};
 };
 
+// Centralized Printify request helper with auth + JSON parsing.
 const printifyRequest = async (token, path, options = {}) => {
   const response = await fetch(`https://api.printify.com/v1${path}`, {
     ...options,
@@ -79,6 +80,7 @@ const printifyRequest = async (token, path, options = {}) => {
   return data;
 };
 
+// Uploads an image to Printify so it can be used in a product order.
 const uploadPrintifyImage = async (token, fileName, imageValue) => {
   const dataUrl = parseDataUrl(imageValue);
   const payload = dataUrl
@@ -124,6 +126,7 @@ const buildPrintifyImages = (item) => {
   return images;
 };
 
+// Creates a Printify order with uploaded assets and variant selection.
 const createPrintifyOrder = async ({
   token,
   shopId,

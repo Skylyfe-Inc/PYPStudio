@@ -83,6 +83,20 @@ const AiPicker = ({
   setSlantBilling = () => {},
   slantUseShippingForBilling = true,
   setSlantUseShippingForBilling = () => {},
+  slantPlatformId = "",
+  setSlantPlatformId = () => {},
+  slantFilamentId = "",
+  setSlantFilamentId = () => {},
+  slantPublicFileServiceId = "",
+  setSlantPublicFileServiceId = () => {},
+  slantItemName = "",
+  setSlantItemName = () => {},
+  slantSku = "",
+  setSlantSku = () => {},
+  slantMetadata = "",
+  setSlantMetadata = () => {},
+  slantFilaments = [],
+  slantFilamentsError = "",
   onSlantOrder = () => {},
 }) => {
   if (mode === "meshy") {
@@ -114,6 +128,8 @@ const AiPicker = ({
     const progressValue = Math.max(0, Math.min(100, Number(progressRaw) || 0));
     const canRefine =
       Boolean(taskId) && String(status).toLowerCase() === "succeeded";
+    const normalizedSlantQuote =
+      slantQuote?.result || slantQuote?.data || slantQuote || null;
     const assets =
       normalizedTask.assets ||
       normalizedTask?.result?.assets ||
@@ -125,13 +141,28 @@ const AiPicker = ({
         ? assets.find((asset) => asset?.url)?.url
         : undefined);
     const previewUrl = downloadUrl;
+    const hasMeshyModel = Boolean(previewUrl);
     const taskStatus = String(status || "").toLowerCase();
     const isMeshyComplete =
       taskStatus === "succeeded" || taskStatus === "success";
+    // STL readiness gates quoting/ordering steps.
     const hasStl = Boolean(meshyStlUrl);
     const isMeshyReady = isMeshyComplete || progressValue >= 100;
-    const normalizedSlantQuote =
-      slantQuote?.result || slantQuote?.data || slantQuote || null;
+    // Platform + filament IDs are required for Slant v2.
+    const hasSlantInputs =
+      Boolean(slantFilamentId) &&
+      Boolean(slantPlatformId);
+    const contactReady =
+      Boolean(String(slantContact?.name || "").trim()) &&
+      Boolean(String(slantContact?.email || "").trim());
+    const shippingReady =
+      Boolean(String(slantShipping?.street || "").trim()) &&
+      Boolean(String(slantShipping?.city || "").trim()) &&
+      Boolean(String(slantShipping?.state || "").trim()) &&
+      Boolean(String(slantShipping?.zip || "").trim()) &&
+      Boolean(String(slantShipping?.country || "").trim());
+    const quoteReady = Boolean(normalizedSlantQuote);
+    const canQuote = hasSlantInputs && hasStl && contactReady && shippingReady;
 
     return (
       <div className="aipicker-container aipicker-meshy">
@@ -234,7 +265,7 @@ const AiPicker = ({
                 title={meshyLoading ? "Submitting…" : "Generate 3D Preview"}
                 handleClick={onMeshySubmit}
                 disabled={disabled}
-                customStyles={`w-full justify-center text-[12px] font-semibold uppercase tracking-wide border-2 border-zinc-900 rounded-lg py-2 ${
+                customStyles={`w-full justify-center text-[11px] font-semibold uppercase tracking-wide border-2 border-zinc-900 rounded-lg py-1.5 ${
                   meshyLoading
                     ? "bg-zinc-300 text-zinc-500"
                     : disabled
@@ -251,7 +282,8 @@ const AiPicker = ({
               </div>
               <MeshyPreview
                 modelUrl={previewUrl}
-                hasMeshyModel={Boolean(previewUrl)}
+                hasMeshyModel={hasMeshyModel}
+                isLoading={meshyLoading || (hasMeshyModel && !isMeshyComplete)}
               />
               {!previewUrl && (
                 <p className="text-xs text-zinc-500">
@@ -335,6 +367,24 @@ const AiPicker = ({
                 <p className="font-semibold uppercase tracking-wide text-zinc-500">
                   3D Printing Quote
                 </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-wide">
+                  {/* Simple stepper to guide users through quote/order flow. */}
+                  <span className={`rounded-full px-2 py-1 ${
+                    hasStl ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"
+                  }`}>
+                    1. Model ready
+                  </span>
+                  <span className={`rounded-full px-2 py-1 ${
+                    quoteReady ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"
+                  }`}>
+                    2. Quote
+                  </span>
+                  <span className={`rounded-full px-2 py-1 ${
+                    slantOrder ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"
+                  }`}>
+                    3. Order
+                  </span>
+                </div>
                 <label className="mt-2 flex flex-col gap-1">
                   <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
                     Material profile
@@ -379,30 +429,51 @@ const AiPicker = ({
                 <button
                   type="button"
                   onClick={onSlantQuote}
-                  disabled={slantLoading || !hasStl}
+                  disabled={slantLoading || !canQuote}
                   className={`mt-3 w-full rounded-full px-3 py-2 text-[11px] font-semibold uppercase tracking-wide transition ${
-                    slantLoading || !hasStl
+                    slantLoading || !canQuote
                       ? "cursor-not-allowed bg-slate-200 text-slate-400"
                       : "bg-indigo-500 text-white hover:bg-indigo-400"
                   }`}
                 >
                   {slantLoading ? "Requesting quote…" : "Get 3D Printing Quote"}
                 </button>
+                {!hasStl && (
+                  <p className="mt-2 text-[11px] text-zinc-500">
+                    Waiting for STL before requesting a quote.
+                  </p>
+                )}
+                {!hasSlantInputs && (
+                  <p className="mt-2 text-[11px] text-zinc-500">
+                    Set platform and filament IDs to enable quotes.
+                  </p>
+                )}
+                {hasStl && hasSlantInputs && (!contactReady || !shippingReady) && (
+                  <p className="mt-2 text-[11px] text-zinc-500">
+                    Add contact + shipping to unlock quotes.
+                  </p>
+                )}
                 {slantError && (
                   <p className="mt-2 text-[11px] font-semibold text-rose-600">
                     {slantError}
                   </p>
                 )}
                 {normalizedSlantQuote && (
-                  <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-2 text-[10px] text-emerald-700">
-                    <pre className="whitespace-pre-wrap break-words font-sans">
-                      {JSON.stringify(normalizedSlantQuote, null, 2)}
-                    </pre>
-                  </div>
+                  <p className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                    Quote ready. Review details in your order history.
+                  </p>
                 )}
                 <div className="mt-4 space-y-3 rounded-lg border border-slate-200 bg-white/80 p-3">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                    Order details
+                    Step 2: Contact & shipping
+                  </p>
+                  {(!slantPlatformId || !slantFilamentId) && (
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                      Set `VITE_SLANT3D_PLATFORM_ID` and `VITE_SLANT3D_FILAMENT_ID` to enable orders.
+                    </p>
+                  )}
+                  <p className="text-[11px] text-zinc-500">
+                    File ID is generated automatically after upload.
                   </p>
                   <div className="grid gap-2">
                     <input
@@ -551,29 +622,57 @@ const AiPicker = ({
                       </div>
                     </div>
                   )}
+                  <div className="grid gap-2">
+                    <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                      Filament
+                    </label>
+                    {slantFilamentsError ? (
+                      <p className="text-[11px] text-rose-600">
+                        {slantFilamentsError}
+                      </p>
+                    ) : (
+                      <select
+                        value={slantFilamentId}
+                        onChange={(event) => setSlantFilamentId(event.target.value)}
+                        className="w-full rounded-lg border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-700"
+                      >
+                        <option value="" disabled>
+                          Select a filament
+                        </option>
+                        {slantFilaments.map((filament) => (
+                          <option key={filament.publicId} value={filament.publicId}>
+                            {filament.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={onSlantOrder}
-                    disabled={slantOrderLoading || !hasStl}
+                    disabled={slantOrderLoading || !quoteReady}
                     className={`mt-2 w-full rounded-full px-3 py-2 text-[11px] font-semibold uppercase tracking-wide transition ${
-                      slantOrderLoading || !hasStl
+                      slantOrderLoading || !quoteReady
                         ? "cursor-not-allowed bg-slate-200 text-slate-400"
                         : "bg-slate-900 text-white hover:bg-slate-800"
                     }`}
                   >
                     {slantOrderLoading ? "Placing order…" : "Place order"}
                   </button>
+                  {!quoteReady && (
+                    <p className="text-[11px] text-zinc-500">
+                      Get a quote first to enable ordering.
+                    </p>
+                  )}
                   {slantOrderError && (
                     <p className="text-[11px] font-semibold text-rose-600">
                       {slantOrderError}
                     </p>
                   )}
                   {slantOrder && (
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-2 text-[10px] text-emerald-700">
-                      <pre className="whitespace-pre-wrap break-words font-sans">
-                        {JSON.stringify(slantOrder, null, 2)}
-                      </pre>
-                    </div>
+                    <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                      Order processed successfully.
+                    </p>
                   )}
                 </div>
               </div>
@@ -624,6 +723,17 @@ const AiPicker = ({
                       </a>
                     ) : null}
                   </div>
+                ) : null}
+                {isMeshyReady ? (
+                  meshyStlUrl ? (
+                    <p className="text-[11px] font-semibold text-emerald-600">
+                      STL ready for printing.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-zinc-500">
+                      STL not ready yet.
+                    </p>
+                  )
                 ) : null}
                 {Array.isArray(assets) && assets.length > 0 && (
                   <div className="space-y-1 text-[10px] text-zinc-500">

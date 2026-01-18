@@ -37,11 +37,12 @@ const PreviewModel = ({ url }) => {
   return <primitive object={scene} />;
 };
 
-const MeshyPreview = ({ modelUrl, hasMeshyModel = false }) => {
+const MeshyPreview = ({ modelUrl, hasMeshyModel = false, isLoading = false }) => {
   const [loadFailed, setLoadFailed] = useState(false);
   const resolvedUrl = useMemo(
     () => {
       if (!loadFailed && modelUrl && typeof modelUrl === "string") {
+        // Proxy Meshy assets through the backend to avoid CORS issues.
         if (/^https:\/\/assets\.meshy\.ai\//i.test(modelUrl)) {
           return `${API_BASE_URL}/api/v1/meshy/proxy?url=${encodeURIComponent(
             modelUrl,
@@ -87,6 +88,12 @@ const MeshyPreview = ({ modelUrl, hasMeshyModel = false }) => {
         </ModelErrorBoundary>
         <OrbitControls enablePan enableZoom enableRotate />
       </Canvas>
+      {isLoading && (
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="meshy-scanline" />
+          <div className="meshy-scanline-glow" />
+        </div>
+      )}
       {!hasMeshyModel && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div className="rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-600 shadow">
