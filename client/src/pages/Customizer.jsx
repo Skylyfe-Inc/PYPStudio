@@ -1227,12 +1227,34 @@ const Customizer = () => {
     if (missingShipping.length) {
       return `Missing shipping fields: ${missingShipping.join(", ")}`;
     }
+    const country = String(slantShipping?.country || "").trim().toUpperCase();
+    if (country === "US") {
+      const state = String(slantShipping?.state || "").trim().toUpperCase();
+      const zip = String(slantShipping?.zip || "").trim();
+      if (!/^[A-Z]{2}$/.test(state)) {
+        return "State must be a 2-letter US code (e.g., CA).";
+      }
+      if (!/^\d{5}(-\d{4})?$/.test(zip)) {
+        return "ZIP must be 5 digits (or 5+4) for US addresses.";
+      }
+    }
     if (!slantUseShippingForBilling) {
       const missingBilling = requiredAddress.filter(
         (key) => !String(slantBilling?.[key] || "").trim(),
       );
       if (missingBilling.length) {
         return `Missing billing fields: ${missingBilling.join(", ")}`;
+      }
+      const billCountry = String(slantBilling?.country || "").trim().toUpperCase();
+      if (billCountry === "US") {
+        const billState = String(slantBilling?.state || "").trim().toUpperCase();
+        const billZip = String(slantBilling?.zip || "").trim();
+        if (!/^[A-Z]{2}$/.test(billState)) {
+          return "Billing state must be a 2-letter US code (e.g., CA).";
+        }
+        if (!/^\d{5}(-\d{4})?$/.test(billZip)) {
+          return "Billing ZIP must be 5 digits (or 5+4) for US addresses.";
+        }
       }
     }
     return "";

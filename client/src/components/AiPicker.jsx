@@ -161,6 +161,12 @@ const AiPicker = ({
       Boolean(String(slantShipping?.state || "").trim()) &&
       Boolean(String(slantShipping?.zip || "").trim()) &&
       Boolean(String(slantShipping?.country || "").trim());
+    const shippingCountry = String(slantShipping?.country || "").trim().toUpperCase();
+    const shippingState = String(slantShipping?.state || "").trim().toUpperCase();
+    const shippingZip = String(slantShipping?.zip || "").trim();
+    const isUSShipping = shippingCountry === "US";
+    const isValidUSState = !isUSShipping || /^[A-Z]{2}$/.test(shippingState);
+    const isValidUSZip = !isUSShipping || /^\d{5}(-\d{4})?$/.test(shippingZip);
     const quoteReady = Boolean(normalizedSlantQuote);
     const canQuote = hasSlantInputs && hasStl && contactReady && shippingReady;
 
@@ -175,7 +181,7 @@ const AiPicker = ({
             className="aipicker-textarea"
           />
 
-          <div className="grid gap-4 md:grid-cols-[1.1fr_0.9fr]">
+          <div className="grid gap-4 md:grid-cols-[1.1fr_0.9fr] md:items-stretch">
             <div className="flex flex-col gap-4 rounded-2xl border border-slate-200/80 bg-white/80 p-4 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.55)] backdrop-blur">
               <div className="grid gap-3 rounded-xl border-2 border-zinc-200 bg-white/90 p-3 text-xs text-zinc-600">
                 <label className="flex flex-col gap-1">
@@ -260,19 +266,17 @@ const AiPicker = ({
                 </div>
               )}
 
-              <CustomButton
-                type="custom"
-                title={meshyLoading ? "Submitting…" : "Generate 3D Preview"}
-                handleClick={onMeshySubmit}
-                disabled={disabled}
-                customStyles={`w-full justify-center text-[11px] font-semibold uppercase tracking-wide border-2 border-zinc-900 rounded-lg py-1.5 ${
-                  meshyLoading
-                    ? "bg-zinc-300 text-zinc-500"
-                    : disabled
-                      ? "bg-zinc-200 text-zinc-400"
-                      : "bg-indigo-500 text-white hover:bg-indigo-400"
-                }`}
+              <MeshyPreview
+                modelUrl={previewUrl}
+                hasMeshyModel={hasMeshyModel}
+                isLoading={meshyLoading || (hasMeshyModel && !isMeshyComplete)}
+                className="flex-1"
               />
+              {!previewUrl && (
+                <p className="text-xs text-zinc-500">
+                  Generate a preview to see the Meshy model here.
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white/80 p-4 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.55)] backdrop-blur">
@@ -280,16 +284,19 @@ const AiPicker = ({
                 <span>Preview</span>
                 <span>{previewUrl ? "Meshy Preview" : "Sample model"}</span>
               </div>
-              <MeshyPreview
-                modelUrl={previewUrl}
-                hasMeshyModel={hasMeshyModel}
-                isLoading={meshyLoading || (hasMeshyModel && !isMeshyComplete)}
+              <CustomButton
+                type="custom"
+                title={meshyLoading ? "Submitting…" : "Generate 3D Preview"}
+                handleClick={onMeshySubmit}
+                disabled={disabled || (hasMeshyModel && !isMeshyComplete)}
+                customStyles={`w-full justify-center text-[11px] font-semibold uppercase tracking-wide border-2 border-zinc-900 rounded-lg py-1.5 ${
+                  meshyLoading || (hasMeshyModel && !isMeshyComplete)
+                    ? "bg-zinc-300 text-zinc-500"
+                    : disabled
+                      ? "bg-zinc-200 text-zinc-400"
+                      : "bg-indigo-500 text-white hover:bg-indigo-400"
+                }`}
               />
-              {!previewUrl && (
-                <p className="text-xs text-zinc-500">
-                  Generate a preview to see the Meshy model here.
-                </p>
-              )}
               <div className="rounded-xl border border-zinc-200 bg-white/90 p-3 text-xs text-zinc-600">
                 <p className="font-semibold uppercase tracking-wide text-zinc-500">
                   Texture refine
@@ -560,6 +567,11 @@ const AiPicker = ({
                         placeholder="State"
                       />
                     </div>
+                    {!isValidUSState && (
+                      <p className="text-[10px] text-rose-600">
+                        Use a 2-letter US state code (e.g., CA).
+                      </p>
+                    )}
                     <div className="grid gap-2 sm:grid-cols-2">
                       <input
                         type="text"
@@ -580,6 +592,11 @@ const AiPicker = ({
                         placeholder="Country (ISO)"
                       />
                     </div>
+                    {!isValidUSZip && (
+                      <p className="text-[10px] text-rose-600">
+                        ZIP must be 5 digits (or 5+4) for US addresses.
+                      </p>
+                    )}
                     <label className="flex items-center gap-2 text-[11px] text-zinc-600">
                       <input
                         type="checkbox"

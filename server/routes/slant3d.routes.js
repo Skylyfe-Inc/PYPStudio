@@ -270,8 +270,10 @@ router.post("/files/upload", async (req, res) => {
   }
 
   const { fileUrl, fileName, platformId, ownerId } = req.body || {};
+  const normalizedUrl = typeof fileUrl === "string" ? fileUrl.trim() : "";
+  const normalizedName = typeof fileName === "string" ? fileName.trim() : "";
 
-  if (!fileUrl || !fileName || !platformId) {
+  if (!normalizedUrl || !normalizedName || !platformId) {
     return res.status(400).json({
       success: false,
       message: "fileUrl, fileName, and platformId are required to upload a file.",
@@ -280,8 +282,10 @@ router.post("/files/upload", async (req, res) => {
 
   try {
     const payload = {
-      url: fileUrl,
-      name: fileName,
+      url: normalizedUrl,
+      fileURL: normalizedUrl,
+      downloadURL: normalizedUrl,
+      name: normalizedName,
       platformId,
       ownerId: ownerId || undefined,
     };
