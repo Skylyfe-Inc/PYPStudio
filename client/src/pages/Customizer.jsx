@@ -8,7 +8,6 @@ import {
   reader,
   captureCanvasImage,
   captureCanvasThumbnail,
-  downloadCanvasToImage,
 } from "../config/config/helpers";
 
 import cartLogo from "../assets/assets/cartLogo.png";
@@ -241,7 +240,40 @@ const Customizer = () => {
   const [meshyTask, setMeshyTask] = useState(null);
   const [meshyError, setMeshyError] = useState("");
   const [meshyLoading, setMeshyLoading] = useState(false);
+  const [meshyConvertedStl, setMeshyConvertedStl] = useState(null);
+  const [slantMaterial, setSlantMaterial] = useState("PLA");
+  const [slantColor, setSlantColor] = useState("black");
+  const [slantQuantity, setSlantQuantity] = useState(1);
+  const [slantQuote, setSlantQuote] = useState(null);
+  const [slantError, setSlantError] = useState("");
+  const [slantLoading, setSlantLoading] = useState(false);
+  const [slantOrder, setSlantOrder] = useState(null);
+  const [slantOrderError, setSlantOrderError] = useState("");
+  const [slantOrderLoading, setSlantOrderLoading] = useState(false);
+  const [slantContact, setSlantContact] = useState({
+    name: "",
+    email: "",
+    phone: "",
+  });
+  const [slantShipping, setSlantShipping] = useState({
+    street: "",
+    city: "",
+    state: "",
+    zip: "",
+    country: "US",
+    isUSResidential: true,
+  });
+  const [slantBilling, setSlantBilling] = useState({
+    street: "",
+    city: "",
+    state: "",
+    zip: "",
+    country: "US",
+    isUSResidential: true,
+  });
+  const [slantUseShippingForBilling, setSlantUseShippingForBilling] = useState(true);
   const meshyPollRef = useRef(null);
+  const meshyConvertRef = useRef({ taskId: null, inFlight: false });
   const terminalMeshyStatuses = useMemo(
     () => ["succeeded", "failed", "canceled", "cancelled", "finished", "ready"],
     [],
@@ -268,6 +300,8 @@ const Customizer = () => {
 
     const status = directTask?.status || payload?.status || fallbackStatus;
     const nestedResult = directTask?.result || {};
+    const progress =
+      directTask?.progress ?? payload?.progress ?? nestedResult?.progress ?? null;
     const assets =
       nestedResult?.assets || directTask?.assets || nestedResult?.outputs || [];
     const downloadUrl =
@@ -283,11 +317,40 @@ const Customizer = () => {
     return {
       task_id: taskId,
       status,
+      progress,
       assets,
       downloadUrl,
       raw: payload,
     };
   };
+
+  const resolveMeshyAssets = (task) => {
+    if (!task) return [];
+    const candidates = [
+      task.assets,
+      task.result?.assets,
+      task.data?.assets,
+      task.raw?.result?.assets,
+    ];
+    const assets = candidates.find((entry) => Array.isArray(entry));
+    return Array.isArray(assets) ? assets : [];
+  };
+
+  const meshyStlAsset = useMemo(() => {
+    const assets = resolveMeshyAssets(meshyTask);
+    return assets.find((asset) => {
+      const type = String(asset?.type || "").toLowerCase();
+      const url = String(asset?.url || "").toLowerCase();
+      return type.includes("stl") || url.endsWith(".stl");
+    });
+  }, [meshyTask]);
+
+  const meshyStlUrl = meshyConvertedStl?.url || meshyStlAsset?.url || "";
+  const meshyStlName =
+    meshyConvertedStl?.name ||
+    meshyStlAsset?.name ||
+    meshyStlUrl.split("/").pop() ||
+    "meshy-model.stl";
 
   // Reset scale when model changes
   const resetDecalTransforms = () => {
@@ -485,43 +548,6 @@ const Customizer = () => {
   const handleProfileNavigation = () => {
     state.intro = true;
     navigate("/profile");
-  };
-
-  const handleDownload = async () => {
-    console.debug("[Customizer] Download triggered");
-    const promptMessage =
-      "Choose download quality:\n1 - Standard (current resolution)\n2 - High (2x)\n3 - Ultra (3x)\nYou can also enter a custom scale value (e.g., 1.5).";
-    const response = window.prompt(promptMessage, "1");
-    if (response === null) return;
-
-    const trimmed = response.trim();
-    const quickMap = { "1": 1, "2": 2, "3": 3 };
-    const parsed =
-      quickMap[trimmed] ?? Number.parseFloat(trimmed.replace(/[^0-9.]/g, ""));
-    const multiplier = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-    const limitedMultiplier = Math.min(multiplier, 4); // prevent extreme values
-
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const fileName = `pyp-design-${timestamp}`;
-
-    console.debug("[Customizer] Requested download scale", {
-      input: trimmed,
-      parsedMultiplier: parsed,
-      appliedMultiplier: limitedMultiplier,
-    });
-
-    const success = await downloadCanvasToImage({
-      multiplier: limitedMultiplier,
-      fileName,
-      mimeType: "image/png",
-    });
-
-    if (!success) {
-      alert("Unable to download the image right now. Please try again.");
-      console.debug("[Customizer] Download failed");
-    } else {
-      console.debug("[Customizer] Download succeeded", { fileName });
-    }
   };
 
   const saveDesign = (nameOverride) => {
@@ -812,6 +838,30 @@ const Customizer = () => {
             meshyLoading={meshyLoading}
             meshyTask={meshyTask}
             meshyError={meshyError}
+            meshyStlUrl={meshyStlUrl}
+            meshyStlName={meshyStlName}
+            slantMaterial={slantMaterial}
+            setSlantMaterial={setSlantMaterial}
+            slantColor={slantColor}
+            setSlantColor={setSlantColor}
+            slantQuantity={slantQuantity}
+            setSlantQuantity={setSlantQuantity}
+            slantLoading={slantLoading}
+            slantQuote={slantQuote}
+            slantError={slantError}
+            onSlantQuote={handleSlantQuote}
+            slantOrder={slantOrder}
+            slantOrderLoading={slantOrderLoading}
+            slantOrderError={slantOrderError}
+            slantContact={slantContact}
+            setSlantContact={setSlantContact}
+            slantShipping={slantShipping}
+            setSlantShipping={setSlantShipping}
+            slantBilling={slantBilling}
+            setSlantBilling={setSlantBilling}
+            slantUseShippingForBilling={slantUseShippingForBilling}
+            setSlantUseShippingForBilling={setSlantUseShippingForBilling}
+            onSlantOrder={handleSlantOrder}
           />
         );
       }
@@ -914,11 +964,17 @@ const Customizer = () => {
     }
 
     setMeshyError("");
+    setMeshyConvertedStl(null);
+    meshyConvertRef.current = { taskId: null, inFlight: false };
     if (meshyPollRef.current) {
       clearInterval(meshyPollRef.current);
       meshyPollRef.current = null;
     }
     setMeshyTask(null);
+    setSlantQuote(null);
+    setSlantError("");
+    setSlantOrder(null);
+    setSlantOrderError("");
     setMeshyLoading(true);
 
     try {
@@ -957,6 +1013,10 @@ const Customizer = () => {
       return;
     }
     setMeshyError("");
+    setMeshyConvertedStl(null);
+    meshyConvertRef.current = { taskId: null, inFlight: false };
+    setSlantOrder(null);
+    setSlantOrderError("");
     setMeshyLoading(true);
 
     try {
@@ -984,6 +1044,113 @@ const Customizer = () => {
       setMeshyError(error instanceof Error ? error.message : String(error));
     } finally {
       setMeshyLoading(false);
+    }
+  };
+
+  const handleSlantQuote = async () => {
+    if (!meshyStlUrl) {
+      setSlantError("Meshy STL file is not available yet.");
+      return;
+    }
+
+    setSlantError("");
+    setSlantLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/slant3d/quote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileUrl: meshyStlUrl,
+          fileName: meshyStlName,
+          material: slantMaterial,
+          color: slantColor,
+          quantity: slantQuantity,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || data?.success === false) {
+        const message = data?.message || `Request failed with status ${response.status}`;
+        throw new Error(message);
+      }
+
+      setSlantQuote(data?.result ?? data);
+    } catch (error) {
+      setSlantError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSlantLoading(false);
+    }
+  };
+
+  const validateSlantOrder = () => {
+    if (!meshyStlUrl) {
+      return "Meshy STL file is not available yet.";
+    }
+    const requiredContact = ["name", "email", "phone"];
+    const requiredAddress = ["street", "city", "state", "zip", "country"];
+    const missingContact = requiredContact.filter(
+      (key) => !String(slantContact?.[key] || "").trim(),
+    );
+    if (missingContact.length) {
+      return `Missing contact fields: ${missingContact.join(", ")}`;
+    }
+    const missingShipping = requiredAddress.filter(
+      (key) => !String(slantShipping?.[key] || "").trim(),
+    );
+    if (missingShipping.length) {
+      return `Missing shipping fields: ${missingShipping.join(", ")}`;
+    }
+    if (!slantUseShippingForBilling) {
+      const missingBilling = requiredAddress.filter(
+        (key) => !String(slantBilling?.[key] || "").trim(),
+      );
+      if (missingBilling.length) {
+        return `Missing billing fields: ${missingBilling.join(", ")}`;
+      }
+    }
+    return "";
+  };
+
+  const handleSlantOrder = async () => {
+    const validationMessage = validateSlantOrder();
+    if (validationMessage) {
+      setSlantOrderError(validationMessage);
+      return;
+    }
+
+    setSlantOrderError("");
+    setSlantOrderLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/slant3d/order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileUrl: meshyStlUrl,
+          fileName: meshyStlName,
+          material: slantMaterial,
+          color: slantColor,
+          quantity: slantQuantity,
+          contact: slantContact,
+          shipping: slantShipping,
+          billing: slantUseShippingForBilling ? slantShipping : slantBilling,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || data?.success === false) {
+        const message = data?.message || `Request failed with status ${response.status}`;
+        throw new Error(message);
+      }
+
+      setSlantOrder(data?.result ?? data);
+    } catch (error) {
+      setSlantOrderError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSlantOrderLoading(false);
     }
   };
 
@@ -1041,6 +1208,61 @@ const Customizer = () => {
       }
     };
   }, [meshyTask?.task_id, meshyTask?.status, terminalMeshyStatuses]);
+
+  useEffect(() => {
+    const taskId = meshyTask?.task_id;
+    if (!taskId || meshyConvertedStl?.url || meshyStlAsset?.url) return;
+
+    const status = String(meshyTask?.status || "").toLowerCase();
+    const progress = Number(meshyTask?.progress ?? meshyTask?.raw?.progress ?? 0);
+    const isReady =
+      status === "succeeded" ||
+      status === "success" ||
+      status === "finished" ||
+      status === "ready" ||
+      progress >= 100;
+    const glbUrl = meshyTask?.downloadUrl;
+    if (!isReady || !glbUrl) return;
+
+    if (
+      meshyConvertRef.current.inFlight &&
+      meshyConvertRef.current.taskId === taskId
+    ) {
+      return;
+    }
+
+    meshyConvertRef.current = { taskId, inFlight: true };
+
+    const convertGlb = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/meshy/convert/glb-to-stl`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ glbUrl }),
+        });
+        const data = await response.json();
+        if (!response.ok || data?.success === false) {
+          throw new Error(data?.message || "Failed to convert GLB to STL.");
+        }
+        const url = data?.result?.url;
+        if (url) {
+          const absoluteUrl = url.startsWith("http")
+            ? url
+            : `${API_BASE_URL}${url}`;
+          setMeshyConvertedStl({
+            url: absoluteUrl,
+            name: `meshy-${taskId}.stl`,
+          });
+        }
+      } catch (error) {
+        console.warn("GLB to STL conversion failed", error);
+      } finally {
+        meshyConvertRef.current.inFlight = false;
+      }
+    };
+
+    convertGlb();
+  }, [meshyTask, meshyConvertedStl, meshyStlAsset]);
 
   // ----- AI image submit -----
   const handleSubmit = async (type, options = {}) => {
@@ -1395,9 +1617,40 @@ const Customizer = () => {
       setMeshySymmetry={setMeshySymmetry}
       meshyPoseMode={meshyPoseMode}
       setMeshyPoseMode={setMeshyPoseMode}
+      meshyTexturePrompt={meshyTexturePrompt}
+      setMeshyTexturePrompt={setMeshyTexturePrompt}
+      meshyTextureImageUrl={meshyTextureImageUrl}
+      setMeshyTextureImageUrl={setMeshyTextureImageUrl}
+      meshyEnablePbr={meshyEnablePbr}
+      setMeshyEnablePbr={setMeshyEnablePbr}
+      onMeshyRefine={handleMeshyRefine}
       meshyLoading={meshyLoading}
       meshyTask={meshyTask}
       meshyError={meshyError}
+      meshyStlUrl={meshyStlUrl}
+      meshyStlName={meshyStlName}
+      slantMaterial={slantMaterial}
+      setSlantMaterial={setSlantMaterial}
+      slantColor={slantColor}
+      setSlantColor={setSlantColor}
+      slantQuantity={slantQuantity}
+      setSlantQuantity={setSlantQuantity}
+      slantLoading={slantLoading}
+      slantQuote={slantQuote}
+      slantError={slantError}
+      onSlantQuote={handleSlantQuote}
+      slantOrder={slantOrder}
+      slantOrderLoading={slantOrderLoading}
+      slantOrderError={slantOrderError}
+      slantContact={slantContact}
+      setSlantContact={setSlantContact}
+      slantShipping={slantShipping}
+      setSlantShipping={setSlantShipping}
+      slantBilling={slantBilling}
+      setSlantBilling={setSlantBilling}
+      slantUseShippingForBilling={slantUseShippingForBilling}
+      setSlantUseShippingForBilling={setSlantUseShippingForBilling}
+      onSlantOrder={handleSlantOrder}
     />
   );
 
@@ -1476,23 +1729,13 @@ const Customizer = () => {
             />
           </div>
 
-          {/* Download - desktop */}
-          <div className="hidden md:block">
-            <CustomButton
-              type="filled"
-              title="Download"
-              handleClick={handleDownload}
-              customStyles="py-2 px-4 font-bold text-sm fixed bottom-5 right-5"
-            />
-          </div>
-
           {/* Save Design - desktop */}
           <div className="hidden md:block">
             <CustomButton
               type="filled"
               title="Save Design"
               handleClick={handleOpenSaveModal}
-              customStyles="py-2 px-4 font-bold text-sm fixed bottom-5 left-5 bg-emerald-500 text-white z-50 pointer-events-auto"
+              customStyles="py-2 px-4 font-bold text-sm fixed bottom-5 right-5"
             />
           </div>
 
@@ -1668,15 +1911,25 @@ const Customizer = () => {
           </div>
 
           {isMeshyMode && (
-            <div className="fixed inset-0 z-[80] flex flex-col bg-slate-100">
-              <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Meshy
-                  </p>
-                  <h2 className="text-lg font-bold text-slate-900">
-                    Text-to 3D Printing
-                  </h2>
+            <div className="fixed inset-0 z-[80] flex flex-col bg-gradient-to-br from-amber-50 via-slate-100 to-rose-50">
+              <div className="pointer-events-none absolute -top-24 -left-16 h-64 w-64 rounded-full bg-amber-200/40 blur-3xl" />
+              <div className="pointer-events-none absolute -bottom-24 right-0 h-72 w-72 rounded-full bg-rose-200/40 blur-3xl" />
+              <div className="relative flex items-center justify-between border-b border-slate-200/80 bg-white/70 px-6 py-4 shadow-sm backdrop-blur">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-sm font-black uppercase tracking-widest text-amber-200">
+                    3D
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                      Place Your Print Studio
+                    </p>
+                    <h2 className="text-xl font-black tracking-tight text-slate-900">
+                      Text-to-3D Printing
+                    </h2>
+                    <p className="mt-1 text-xs text-slate-600">
+                      Describe it, preview it, then request a print-ready quote.
+                    </p>
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -1687,7 +1940,9 @@ const Customizer = () => {
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto px-6 py-6">
-                {meshyPicker}
+                <div className="mx-auto w-full max-w-6xl">
+                  {meshyPicker}
+                </div>
               </div>
             </div>
           )}

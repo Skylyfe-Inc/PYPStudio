@@ -9,6 +9,7 @@ import designRoutes from './routes/design.routes.js';
 import meshyRoutes from './routes/meshy.routes.js';
 import printifyRoutes from './routes/printify.routes.js';
 import ordersRoutes from './routes/orders.routes.js';
+import slant3dRoutes from './routes/slant3d.routes.js';
 
 dotenv.config(); // Loads environment variables from .env file
 
@@ -42,6 +43,15 @@ app.use('/api/v1/designs', designRoutes); // Adds routes from designRoutes
 app.use('/api/v1/meshy', meshyRoutes); // Adds routes for Meshy integration
 app.use('/api/v1/printify', printifyRoutes); // Adds routes for Printify catalog
 app.use('/api/v1/orders', ordersRoutes); // Adds routes for order drafts
+app.use('/api/v1/slant3d', slant3dRoutes); // Adds routes for Slant 3D printing
+
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'ok',
+        service: 'pypstudio-server',
+        timestamp: new Date().toISOString(),
+    });
+});
 
 app.get('/', (req,res) =>{ // GET request to root endpoint
     res.status(200).json({message: 'Hello From PlaceYourPrintStudio Server'}) // Sends 200 status code and JSON message

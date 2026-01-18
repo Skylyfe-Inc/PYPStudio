@@ -86,6 +86,9 @@ const Cart = () => {
 
       const db = getFirestore(app);
 
+      const printifySelection = snap.selectedPrintifySelection || null;
+      const printProvider = snap.selectedPrintProvider || null;
+
       // 3) Create pending order first
       const orderRef = await addDoc(collection(db, "orders"), {
         uid: user.uid,
@@ -96,6 +99,8 @@ const Cart = () => {
         createdAt: serverTimestamp(),
         subtotal: totals.subtotal,
         itemCount: totals.itemCount,
+        printifySelection,
+        printProvider,
         items: cartItems.map((i) => ({
           id: i.id,
           name: i.name,
@@ -128,6 +133,7 @@ const Cart = () => {
         mode: "payment",
         success_url: `${window.location.origin}/checkout/success?orderId=${orderRef.id}`,
         cancel_url: `${window.location.origin}/cart`,
+        shipping_address_collection: { allowed_countries: ["US"] },
         metadata: {
           orderId: orderRef.id,
           uid: user.uid,

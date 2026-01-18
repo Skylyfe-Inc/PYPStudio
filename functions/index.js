@@ -18,6 +18,7 @@ admin.initializeApp();
 // Define secrets
 const stripeSecretKey = defineSecret("STRIPE_SECRET_KEY");
 const stripeWebhookSecret = defineSecret("STRIPE_WEBHOOK_SECRET");
+const printifyApiToken = defineSecret("PRINTIFY_API_TOKEN");
 
 // For cost control, you can set the maximum number of containers that can be
 // running at the same time. This helps mitigate the impact of unexpected
@@ -35,10 +36,194 @@ setGlobalOptions({maxInstances: 10});
  * Stripe Webhook Handler
  * Listens for Stripe events and updates order status in Firestore
  */
+const splitFullName = (fullName = "") => {
+  const parts = String(fullName).trim().split(" ").filter(Boolean);
+  return {
+    firstName: parts[0] || "",
+    lastName: parts.slice(1).join(" ") || parts[0] || "",
+  };
+};
+
+const parseDataUrl = (dataUrl) => {
+  if (!dataUrl || typeof dataUrl !== "string") return null;
+  const match = dataUrl.match(/^data:(.+?);base64,(.+)$/);
+  if (!match) return null;
+  return {mime: match[1], data: match[2]};
+};
+
+const printifyRequest = async (token, path, options = {}) => {
+  const response = await fetch(`https://api.printify.com/v1${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+  const text = await response.text();
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      data = {raw: text};
+    }
+  }
+  if (!response.ok) {
+    const message = data?.message || data?.error || response.statusText;
+    const error = new Error(message || "Printify request failed");
+    error.status = response.status;
+    error.payload = data;
+    throw error;
+  }
+  return data;
+};
+
+const uploadPrintifyImage = async (token, fileName, imageValue) => {
+  const dataUrl = parseDataUrl(imageValue);
+  const payload = dataUrl
+    ? {
+        file_name: fileName,
+        contents: dataUrl.data,
+      }
+    : {
+        file_name: fileName,
+        url: imageValue,
+      };
+  return printifyRequest(token, "/uploads/images.json", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+};
+
+const buildPrintifyImages = (item) => {
+  const images = [];
+  const toggles = item?.toggles || {};
+  const decals = item?.decals || {};
+  const placementMap = {
+    logo: "front",
+    full: "front",
+    backLogo: "back",
+    backFull: "back",
+  };
+
+  Object.entries(placementMap).forEach(([key, placement]) => {
+    if (!toggles[`is${key[0].toUpperCase()}${key.slice(1)}Texture`]) return;
+    const value = decals[key];
+    if (typeof value === "string" && /^(data:image|https?:\/\/)/i.test(value)) {
+      images.push({placement, value});
+    }
+  });
+
+  if (!images.length && typeof item?.thumbnail === "string") {
+    if (/^data:image/i.test(item.thumbnail)) {
+      images.push({placement: "front", value: item.thumbnail});
+    }
+  }
+
+  return images;
+};
+
+const createPrintifyOrder = async ({
+  token,
+  shopId,
+  orderId,
+  orderData,
+  session,
+}) => {
+  const selection = orderData?.printifySelection;
+  if (!selection?.variantId || !selection?.printProviderId || !selection?.blueprintId) {
+    return {skipped: true, reason: "Missing printify selection"};
+  }
+
+  const shipping = session?.shipping_details;
+  if (!shipping?.address) {
+    return {skipped: true, reason: "Missing shipping address"};
+  }
+
+  const {firstName, lastName} = splitFullName(shipping.name || "");
+  const address = shipping.address || {};
+  const email = session?.customer_details?.email || orderData?.email || null;
+
+  const items = Array.isArray(orderData?.items) ? orderData.items : [];
+  const primaryItem = items[0] || {};
+  const images = buildPrintifyImages(primaryItem);
+  if (!images.length) {
+    return {skipped: true, reason: "No printable image found"};
+  }
+
+  const uploadedImages = [];
+  for (let index = 0; index < images.length; index += 1) {
+    const image = images[index];
+    const result = await uploadPrintifyImage(
+        token,
+        `order-${orderId}-${image.placement}-${index + 1}.png`,
+        image.value,
+    );
+    uploadedImages.push({placement: image.placement, id: result?.id});
+  }
+
+  const placeholders = uploadedImages.map((image) => ({
+    position: image.placement,
+    images: [
+      {
+        id: image.id,
+        x: 0.5,
+        y: 0.5,
+        scale: 1,
+        angle: 0,
+      },
+    ],
+  }));
+
+  const payload = {
+    external_id: orderId,
+    label: `Order ${orderId}`,
+    line_items: [
+      {
+        blueprint_id: selection.blueprintId,
+        print_provider_id: selection.printProviderId,
+        variant_id: selection.variantId,
+        quantity: primaryItem.quantity || 1,
+        print_areas: [
+          {
+            variant_ids: [selection.variantId],
+            placeholders,
+          },
+        ],
+      },
+    ],
+    address_to: {
+      first_name: firstName || orderData?.firstName || "",
+      last_name: lastName || orderData?.lastName || "",
+      email: email || "",
+      phone: shipping?.phone || orderData?.phone || "",
+      country: address.country || "",
+      region: address.state || "",
+      address1: address.line1 || "",
+      address2: address.line2 || "",
+      city: address.city || "",
+      zip: address.postal_code || "",
+    },
+    send_shipping_notification: false,
+  };
+
+  const response = await printifyRequest(
+      token,
+      `/shops/${shopId}/orders.json`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+  );
+
+  return {skipped: false, response};
+};
+
 exports.stripeWebhook = onRequest(
     {
       region: "us-east1",
-      secrets: [stripeSecretKey, stripeWebhookSecret],
+      secrets: [stripeSecretKey, stripeWebhookSecret, printifyApiToken],
     },
     async (req, res) => {
       // Initialize Stripe inside the function to avoid deployment issues
@@ -78,8 +263,12 @@ exports.stripeWebhook = onRequest(
             return res.status(200).json({received: true});
           }
 
+          const orderRef = admin.firestore().collection("orders").doc(orderId);
+          const orderSnap = await orderRef.get();
+          const orderData = orderSnap.exists ? orderSnap.data() : null;
+
           // Mark the order as paid
-          await admin.firestore().collection("orders").doc(orderId).set(
+          await orderRef.set(
               {
                 status: "paid",
                 paidAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -93,6 +282,64 @@ exports.stripeWebhook = onRequest(
               },
               {merge: true},
           );
+
+          if (!orderSnap.exists) {
+            console.warn("Order not found for Printify sync", orderId);
+          } else if (orderData?.printify?.orderId) {
+            console.log(`Printify already created for order ${orderId}`);
+          } else {
+            const shopId = process.env.PRINTIFY_SHOP_ID;
+            const token = printifyApiToken.value();
+            if (!shopId || !token) {
+              console.warn("Printify not configured for order", orderId);
+            } else {
+              try {
+                const result = await createPrintifyOrder({
+                  token,
+                  shopId,
+                  orderId,
+                  orderData,
+                  session,
+                });
+                if (result.skipped) {
+                  await orderRef.set(
+                      {
+                        printify: {
+                          status: "skipped",
+                          reason: result.reason,
+                          skippedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        },
+                      },
+                      {merge: true},
+                  );
+                } else {
+                  await orderRef.set(
+                      {
+                        printify: {
+                          status: "created",
+                          orderId: result.response?.id || null,
+                          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                          details: result.response || null,
+                        },
+                      },
+                      {merge: true},
+                  );
+                }
+              } catch (printifyError) {
+                console.error("Printify order creation failed", printifyError);
+                await orderRef.set(
+                    {
+                      printify: {
+                        status: "error",
+                        error: printifyError.message || String(printifyError),
+                        failedAt: admin.firestore.FieldValue.serverTimestamp(),
+                      },
+                    },
+                    {merge: true},
+                );
+              }
+            }
+          }
 
           console.log(`Order ${orderId} marked as paid`);
         }
