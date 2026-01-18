@@ -34,14 +34,20 @@ class ModelErrorBoundary extends React.Component {
 
 const PreviewModel = ({ url }) => {
   const { scene } = useGLTF(url);
-  return <primitive object={scene} />;
+  return <primitive object={scene} scale={1.35} />;
 };
 
-const MeshyPreview = ({ modelUrl, hasMeshyModel = false }) => {
+const MeshyPreview = ({
+  modelUrl,
+  hasMeshyModel = false,
+  isLoading = false,
+  className = "",
+}) => {
   const [loadFailed, setLoadFailed] = useState(false);
   const resolvedUrl = useMemo(
     () => {
       if (!loadFailed && modelUrl && typeof modelUrl === "string") {
+        // Proxy Meshy assets through the backend to avoid CORS issues.
         if (/^https:\/\/assets\.meshy\.ai\//i.test(modelUrl)) {
           return `${API_BASE_URL}/api/v1/meshy/proxy?url=${encodeURIComponent(
             modelUrl,
@@ -56,12 +62,18 @@ const MeshyPreview = ({ modelUrl, hasMeshyModel = false }) => {
   const isUsingFallback = resolvedUrl === FALLBACK_GLB;
 
   return (
-    <div className="relative h-72 w-full overflow-hidden rounded-2xl border-2 border-slate-900 bg-white">
+    <div
+      className={`relative h-full w-full overflow-hidden rounded-2xl border-2 border-slate-900 bg-white ${className}`}
+    >
       <Canvas camera={{ position: [0, 0, 3], fov: 45 }}>
         <ambientLight intensity={0.85} />
-        <directionalLight position={[3, 3, 4]} intensity={1.1} />
-        <directionalLight position={[-3, 2, 2]} intensity={0.6} />
-        <pointLight position={[0, -2, 3]} intensity={0.5} />
+        <hemisphereLight intensity={0.5} groundColor="#f1f5f9" />
+        <directionalLight position={[4, 4, 4]} intensity={0.9} />
+        <directionalLight position={[-4, 3, 2]} intensity={0.6} />
+        <directionalLight position={[0, -4, 2]} intensity={0.4} />
+        <directionalLight position={[0, 4, -2]} intensity={0.4} />
+        <pointLight position={[0, 0, 4]} intensity={0.45} />
+        <pointLight position={[0, 0, -4]} intensity={0.6} />
         <ModelErrorBoundary
           key={`${resolvedUrl}-${loadFailed}`}
           onError={() => setLoadFailed(true)}
@@ -87,6 +99,12 @@ const MeshyPreview = ({ modelUrl, hasMeshyModel = false }) => {
         </ModelErrorBoundary>
         <OrbitControls enablePan enableZoom enableRotate />
       </Canvas>
+      {isLoading && (
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="meshy-scanline" />
+          <div className="meshy-scanline-glow" />
+        </div>
+      )}
       {!hasMeshyModel && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div className="rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-slate-600 shadow">
