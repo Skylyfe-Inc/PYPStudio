@@ -24,6 +24,7 @@ const LoginStudio = React.lazy(() => import("./pages/LoginStudio"));
 const IndividualSignUp = React.lazy(() => import("./pages/IndividualSignUp"));
 const WelcomeAiStudio = React.lazy(() => import("./pages/WelcomeAiStudio"));
 const PrintifyCatalog = React.lazy(() => import("./pages/PrintifyCatalog"));
+const OrderConfirmation = React.lazy(() => import("./pages/OrderConfirmation"));
 function App() {
     const snap = useSnapshot(state);
 
@@ -52,6 +53,7 @@ function App() {
 
                     <Route path={AppRoutes.VendorSignUpPage.path} element={<VendorSignUpPage />} />
                      <Route path={AppRoutes.Customizer.path} element={<Customizer />} />
+                    <Route path={AppRoutes.OrderConfirmation.path} element={<OrderConfirmation />} />
                     {/* Protected Routes => view protected routes component */}
                     <Route element={<ProtectedRoute />}>
 

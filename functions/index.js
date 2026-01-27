@@ -95,6 +95,49 @@ exports.stripeWebhook = onRequest(
           );
 
           console.log(`Order ${orderId} marked as paid`);
+
+          // Fetch order details for email notification
+          const orderDoc = await admin.firestore().collection("orders").doc(orderId).get();
+          if (orderDoc.exists) {
+            const orderData = orderDoc.data();
+
+            // Send email notification to vendor
+            // Note: You need to configure Firebase Extensions for email
+            // or implement your own email service (SendGrid, Mailgun, etc.)
+            try {
+              await admin.firestore().collection("mail").add({
+                to: process.env.VENDOR_EMAIL || "vendor@yourstore.com",
+                message: {
+                  subject: `New Order Received - Order #${orderId}`,
+                  html: `
+                    <h2>New Order Notification</h2>
+                    <p><strong>Order ID:</strong> ${orderId}</p>
+                    <p><strong>Customer:</strong> ${orderData.firstName} ${orderData.lastName}</p>
+                    <p><strong>Email:</strong> ${orderData.email}</p>
+                    <p><strong>Amount:</strong> $${(session.amount_total / 100).toFixed(2)} ${session.currency?.toUpperCase()}</p>
+                    <p><strong>Status:</strong> Paid</p>
+                    <p><strong>Payment Intent:</strong> ${session.payment_intent}</p>
+                    ${orderData.cartItems ? `
+                      <h3>Order Items:</h3>
+                      <ul>
+                        ${orderData.cartItems.map((item) => `
+                          <li>${item.title || "Custom Product"} - Quantity: ${item.quantity || 1}</li>
+                        `).join("")}
+                      </ul>
+                    ` : ""}
+                    <p><strong>Shipping Address:</strong></p>
+                    <p>${orderData.address || ""}<br>
+                    ${orderData.city || ""}, ${orderData.state || ""} ${orderData.postalCode || ""}<br>
+                    ${orderData.country || ""}</p>
+                  `,
+                },
+              });
+              console.log(`Vendor notification email queued for order ${orderId}`);
+            } catch (emailErr) {
+              console.error("Failed to send vendor notification:", emailErr);
+              // Don't fail the webhook if email fails
+            }
+          }
         }
 
         // Handle async payment success
