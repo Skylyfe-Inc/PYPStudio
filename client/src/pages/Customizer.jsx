@@ -172,6 +172,38 @@ const computeFallbackDecalKey = (tabState) => {
   return "";
 };
 
+/**
+ * Compress base64 image to reduce localStorage usage
+ * Resizes to maxWidth while maintaining aspect ratio and reduces quality
+ */
+const compressBase64Image = (base64String, maxWidth = 400, quality = 0.7) => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      // Calculate new dimensions while maintaining aspect ratio
+      let width = img.width;
+      let height = img.height;
+      if (width > maxWidth) {
+        height = (height * maxWidth) / width;
+        width = maxWidth;
+      }
+      
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      // Convert to compressed base64 (JPEG with quality reduction)
+      const compressed = canvas.toDataURL('image/jpeg', quality);
+      resolve(compressed);
+    };
+    img.onerror = () => resolve(base64String); // Fallback to original on error
+    img.src = base64String;
+  });
+};
+
 const Customizer = () => {
   const navigate = useNavigate();
   const { state: navState } = useLocation();            // NEW: get state from navigate()
@@ -616,7 +648,7 @@ const Customizer = () => {
       const modelKey = snap.activeModel || "shirt";
       const defaultLabel = MODEL_DISPLAY_NAMES[modelKey] || "Custom Design";
       const label = (nameOverride || "").trim() || defaultLabel;
-      const capturedImage =
+      let capturedImage =
         captureCanvasThumbnail({ width: 360 }) || captureCanvasImage();
       const designSignature = computeDesignSignature(snap);
       const now = new Date();

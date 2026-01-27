@@ -1,34 +1,29 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSnapshot } from "valtio";
 import previewShirt from "../assets/assets/logo-tshirt.png";
 import state from "../store";
 import { toastNotify } from "../components/Toast";
 import { auth } from "../config/firebase";
-import { signOut } from "firebase/auth";
+import { signOut, onAuthStateChanged } from "firebase/auth";
 import { removeToken } from "../config/config/helpers";
+import {
+  getFirestore,
+  collection,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  updateDoc,
+  doc,
+  serverTimestamp,
+} from "firebase/firestore";
+import app from "../config/firebase";
 
 const PROFILE_STORAGE_KEY = "pyp_user_profile";
 const SAVED_DESIGNS_KEY = "pyp_saved_designs";
 
-const ordersSeed = [
-  {
-    id: "A1029",
-    label: "Order #A1029",
-    date: "Feb 16, 2024",
-    total: 44.99,
-    status: "Shipped",
-    canCancel: false,
-  },
-  {
-    id: "A0981",
-    label: "Order #A0981",
-    date: "Jan 12, 2024",
-    total: 59.49,
-    status: "Processing",
-    canCancel: true,
-  },
-];
+const db = getFirestore(app);
 
 const buildInitials = (displayName, profile = {}) => {
   const source = (displayName || profile.email || "").trim();
@@ -51,7 +46,10 @@ const Profile = () => {
   const navigate = useNavigate();
   const snap = useSnapshot(state);
 
-  const orders = useMemo(() => ordersSeed, []);
+  const [orders, setOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [ordersError, setOrdersError] = useState(null);
+
   const designs = useMemo(
     () => (Array.isArray(snap.savedDesigns) ? snap.savedDesigns : []),
     [snap.savedDesigns],
@@ -69,6 +67,46 @@ const Profile = () => {
     }
   }, [snap.userProfile]);
 
+  // Real-time order listener
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        setOrders([]);
+        setOrdersLoading(false);
+        return;
+      }
+
+      setOrdersLoading(true);
+      setOrdersError(null);
+
+      // Listen to orders for this user, newest first
+      const q = query(
+        collection(db, "orders"),
+        where("userId", "==", user.uid),
+        orderBy("createdAt", "desc"),
+      );
+
+      const unsubOrders = onSnapshot(
+        q,
+        (snap) => {
+          const next = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          setOrders(next);
+          setOrdersLoading(false);
+        },
+        (err) => {
+          console.error("Order listener error:", err);
+          setOrdersError("Failed to load orders.");
+          setOrdersLoading(false);
+        },
+      );
+
+      // cleanup the order listener when auth changes/unmounts
+      return () => unsubOrders();
+    });
+
+    return () => unsubAuth();
+  }, []);
+
   useEffect(() => {
     if (Array.isArray(snap.savedDesigns) && snap.savedDesigns.length > 0) return;
     try {
@@ -83,6 +121,37 @@ const Profile = () => {
       console.warn("Unable to read stored designs", error);
     }
   }, [snap.savedDesigns]);
+
+  // Transform Firestore orders into UI format
+  const uiOrders = useMemo(() => {
+    return orders.map((o) => {
+      const created =
+        o.createdAt?.toDate?.() ? o.createdAt.toDate() : o.createdAt ? new Date(o.createdAt) : null;
+
+      const date = created
+        ? created.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        : "—";
+
+      const totalCents = o.stripe?.amountTotal ?? 0;
+      const total = totalCents / 100;
+
+      const status = o.status || "Processing";
+
+      const canCancel =
+        o.canCancel ?? (status === "Processing" || status === "Paid");
+
+      return {
+        id: o.id,
+        label: `Order #${o.id.slice(0, 6).toUpperCase()}`,
+        date,
+        total,
+        status,
+        canCancel,
+        thumbnailUrl: o.thumbnailUrl || (o.cartItems?.[0]?.thumbnail),
+        raw: o,
+      };
+    });
+  }, [orders]);
 
   const profile = snap.userProfile || {};
   const displayName =
@@ -215,6 +284,19 @@ const Profile = () => {
     navigate("/");
   };
 
+  const handleCancelOrder = async (orderId) => {
+    try {
+      await updateDoc(doc(db, "orders", orderId), {
+        status: "Cancelled",
+        cancelledAt: serverTimestamp(),
+      });
+      toastNotify("Order cancelled.", "success");
+    } catch (e) {
+      console.error(e);
+      toastNotify("Failed to cancel order.", "error");
+    }
+  };
+
   return (
     <div className="h-screen overflow-y-auto bg-slate-100 px-4 py-10 sm:px-6 lg:px-10">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
@@ -300,39 +382,53 @@ const Profile = () => {
           <div className="rounded-3xl border-2 border-slate-900 bg-white p-6 shadow-lg lg:col-span-2">
             <SectionHeading icon="🕒" title="Order History" />
             <div className="mt-5 space-y-4">
-              {orders.map((order) => (
-                <div
-                  key={order.id}
-                  className="grid gap-4 rounded-2xl border border-slate-200 p-4 transition hover:border-slate-400 sm:grid-cols-[auto_1fr_auto]"
-                >
-                  <img
-                    src={previewShirt}
-                    alt=""
-                    className="h-16 w-16 rounded-xl border border-slate-200 object-cover"
-                  />
-                  <div>
-                    <p className="font-semibold text-slate-900">{order.label}</p>
-                    <div className="mt-1 text-xs text-slate-500 sm:text-sm">
-                      <div>{order.date}</div>
-                      <div>Sub-total: ${order.total.toFixed(2)}</div>
+              {ordersLoading ? (
+                <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
+                  Loading orders...
+                </p>
+              ) : ordersError ? (
+                <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-rose-600">
+                  {ordersError}
+                </p>
+              ) : uiOrders.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
+                  No orders yet.
+                </p>
+              ) : (
+                uiOrders.map((order) => (
+                  <div
+                    key={order.id}
+                    className="grid gap-4 rounded-2xl border border-slate-200 p-4 transition hover:border-slate-400 sm:grid-cols-[auto_1fr_auto]"
+                  >
+                    <img
+                      src={order.thumbnailUrl || previewShirt}
+                      alt=""
+                      className="h-16 w-16 rounded-xl border border-slate-200 object-cover"
+                    />
+                    <div>
+                      <p className="font-semibold text-slate-900">{order.label}</p>
+                      <div className="mt-1 text-xs text-slate-500 sm:text-sm">
+                        <div>{order.date}</div>
+                        <div>Sub-total: ${order.total.toFixed(2)}</div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end justify-between gap-2 sm:flex-row sm:items-center">
+                      <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                        {order.status}
+                      </span>
+                      <div className="flex gap-2">
+                        {order.canCancel && (
+                          <ProfileActionButton
+                            label="Cancel Item"
+                            tone="danger"
+                            onClick={() => handleCancelOrder(order.id)}
+                          />
+                        )}
+                      </div>
                     </div>
                   </div>
-                  <div className="flex flex-col items-end justify-between gap-2 sm:flex-row sm:items-center">
-                    <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                      {order.status}
-                    </span>
-                    <div className="flex gap-2">
-                      {order.canCancel && (
-                        <ProfileActionButton
-                          label="Cancel Item"
-                          tone="danger"
-                        />
-                      )}
-                      <ProfileActionButton label="Checkout" tone="primary" />
-                    </div>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </section>
