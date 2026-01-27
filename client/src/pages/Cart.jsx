@@ -209,63 +209,102 @@ const Cart = () => {
 
       // 1) Require login (Stripe extension ties sessions to customers/{uid})
       const user = getCurrentUserOrThrow();
-      const uid = user.uid;
 
-      // 2) Get name
-      const name = normalizeName(user);
-      if (!name) {
-        alert("Name is required for checkout.");
-        return;
+      // 2) Get user's name (prompt if not available)
+      let firstName = "";
+      let lastName = "";
+      
+      // Try to parse displayName if available
+      if (user.displayName) {
+        const nameParts = user.displayName.trim().split(" ");
+        firstName = nameParts[0] || "";
+        lastName = nameParts.slice(1).join(" ") || "";
       }
-      const { firstName, lastName } = name;
+      
+      // Prompt for name if not available
+      if (!firstName || !lastName) {
+        const fullName = window.prompt("Please enter your full name (First Last):", user.displayName || "");
+        if (!fullName || !fullName.trim()) {
+          alert("Name is required for checkout.");
+          return;
+        }
+        const nameParts = fullName.trim().split(" ");
+        firstName = nameParts[0] || "";
+        lastName = nameParts.slice(1).join(" ") || nameParts[0] || "";
+      }
 
-      // 3) Create minimal order - just the essentials
-      const orderPayload = {
-        userId: uid,
-        email: user.email || "",
+      const db = getFirestore(app);
+
+      const printifySelection = snap.selectedPrintifySelection || null;
+      const printProvider = snap.selectedPrintProvider || null;
+
+      // 3) Create pending order first
+      const orderRef = await addDoc(collection(db, "orders"), {
+        uid: user.uid,
+        email: user.email ?? null,
         firstName,
         lastName,
         status: "pending",
         createdAt: serverTimestamp(),
-        subtotal: Number(totals.subtotal) || 0,
-        itemCount: Number(totals.itemCount) || 0,
-      };
+        subtotal: totals.subtotal,
+        itemCount: totals.itemCount,
+        printifySelection,
+        printProvider,
+        items: cartItems.map((i) => ({
+          id: i.id,
+          name: i.name,
+          price: i.price,
+          quantity: i.quantity,
+          thumbnail: i.thumbnail || null,
+          colorHex: i.colorHex || null,
+          colorLabel: i.colorLabel || null,
+          designName: i.designName || i.name || "Custom Design",
+          designId: i.designId || null,
+        })),
+      });
 
-      const orderRef = await addDoc(collection(db, "orders"), orderPayload);
-
-      // 4) Ensure customers/{uid} exists for the Stripe extension
-      await setDoc(
-        doc(db, "customers", uid),
-        {
-          email: user.email ?? null,
-          firstName,
-          lastName,
-        },
-        { merge: true }
-      );
+      // 4) Update customer document with name
+      const customerRef = doc(db, "customers", user.uid);
+      await setDoc(customerRef, {
+        email: user.email ?? null,
+        firstName,
+        lastName,
+      }, { merge: true });
 
       // 5) Create checkout session
       const priceId = cartItems?.[0]?.stripePriceId;
       if (!priceId) throw new Error("Missing stripePriceId on cart item.");
 
-      const sessionRef = await addDoc(
-        collection(db, "customers", uid, "checkout_sessions"),
-        {
-          price: priceId,
-          mode: "payment",
-          success_url: `${window.location.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${window.location.origin}/cart`,
-          allow_promotion_codes: true,
-          metadata: {
-            orderId: orderRef.id,
-            userId: uid,
-          },
-        }
-      );
+      const checkoutSessionsRef = collection(db, "customers", user.uid, "checkout_sessions");
 
-      // 6) Wait for url then redirect
-      const url = await waitForCheckoutUrl(uid, sessionRef.id);
-      window.location.assign(url);
+      const sessionRef = await addDoc(checkoutSessionsRef, {
+        price: priceId,
+        mode: "payment",
+        success_url: `${window.location.origin}/checkout/success?orderId=${orderRef.id}`,
+        cancel_url: `${window.location.origin}/cart`,
+        shipping_address_collection: { allowed_countries: ["US"] },
+        metadata: {
+          orderId: orderRef.id,
+          uid: user.uid,
+        },
+        allow_promotion_codes: true,
+      });
+
+      // 4) Listen for the extension to write back the Stripe checkout URL (or error)
+      const unsub = onSnapshot(doc(db, "customers", user.uid, "checkout_sessions", sessionRef.id), (snap) => {
+        const data = snap.data();
+        if (!data) return;
+
+        if (data.error) {
+          unsub();
+          throw new Error(data.error.message || "Stripe checkout session failed.");
+        }
+
+        if (data.url) {
+          unsub();
+          window.location.assign(data.url);
+        }
+      });
     } catch (err) {
       console.error("❌ Checkout failed - Full error:", err);
       console.error("❌ Error name:", err?.name);
