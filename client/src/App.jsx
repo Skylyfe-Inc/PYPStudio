@@ -9,6 +9,10 @@ import state from "./store";
 import Layout from "./pages/Layout";
 import { useSnapshot } from "valtio";
 import AccessGate from "./components/AccessGate";
+import { auth } from "./config/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { fetchUserRole } from "./lib/fetchUserRole";
+import { ensureUserDoc } from "./lib/ensureUserDoc";
 
 // Using Lazy loading so as to improve the app performance. Only load pages when ever needed.
 const NotFound = React.lazy(() => import("./pages/NotFound"));
@@ -25,6 +29,8 @@ const IndividualSignUp = React.lazy(() => import("./pages/IndividualSignUp"));
 const WelcomeAiStudio = React.lazy(() => import("./pages/WelcomeAiStudio"));
 const PrintifyCatalog = React.lazy(() => import("./pages/PrintifyCatalog"));
 const OrderConfirmation = React.lazy(() => import("./pages/OrderConfirmation"));
+const VendorDashboard = React.lazy(() => import("./pages/VendorDashboard"));
+import VendorRoute from "./ProtectedRoute/VendorRoute";
 function App() {
     const snap = useSnapshot(state);
 
@@ -34,6 +40,34 @@ function App() {
     useEffect(() => {
         if (token || token !== undefined) state.intro = true;
     }, [token])
+
+    // Auth listener to fetch user role from custom claims
+    useEffect(() => {
+        const unsub = onAuthStateChanged(auth, async (user) => {
+            state.authUser = user || null;
+
+            if (!user) {
+                state.userRole = "customer";
+                return;
+            }
+
+            try {
+                // Read role from custom claims (server-side controlled)
+                const tokenResult = await user.getIdTokenResult(true);
+                const role = tokenResult?.claims?.role;
+
+                state.userRole = role === "vendor" ? "vendor" : "customer";
+
+                console.log("[role] uid=", user.uid, "role=", state.userRole, "from claims");
+                console.log("[claims]", tokenResult?.claims);
+            } catch (e) {
+                console.warn("Failed to fetch token claims:", e);
+                state.userRole = "customer";
+            }
+        });
+
+        return () => unsub();
+    }, []);
 
 
     return (
@@ -54,6 +88,17 @@ function App() {
                     <Route path={AppRoutes.VendorSignUpPage.path} element={<VendorSignUpPage />} />
                      <Route path={AppRoutes.Customizer.path} element={<Customizer />} />
                     <Route path={AppRoutes.OrderConfirmation.path} element={<OrderConfirmation />} />
+                    
+                    {/* Vendor-only Routes */}
+                    <Route
+                        path={AppRoutes.VendorDashboard.path}
+                        element={
+                            <VendorRoute>
+                                <VendorDashboard />
+                            </VendorRoute>
+                        }
+                    />
+                    
                     {/* Protected Routes => view protected routes component */}
                     <Route element={<ProtectedRoute />}>
 

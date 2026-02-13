@@ -17,6 +17,9 @@ import {
   updateDoc,
   doc,
   serverTimestamp,
+  limit,
+  startAfter,
+  startAt,
 } from "firebase/firestore";
 import app from "../config/firebase";
 
@@ -46,7 +49,24 @@ const Profile = () => {
   const navigate = useNavigate();
   const snap = useSnapshot(state);
 
-  const [orders, setOrders] = useState([]);
+  const PAGE_SIZE = 4;
+
+  const [uid, setUid] = useState(null);
+
+  const [pageOrders, setPageOrders] = useState([]); // only current page
+  const [ordersPage, setOrdersPage] = useState(1);
+
+  // pagination cursor + mode
+  const [pageCursor, setPageCursor] = useState(null); // DocumentSnapshot | null
+  const [pageMode, setPageMode] = useState("init");   // "init" | "next" | "goto"
+
+  // for UI buttons
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [nextCursor, setNextCursor] = useState(null); // DocumentSnapshot | null
+
+  // stack of page-start cursors (DocumentSnapshot for first doc of each page)
+  const [pageStartStack, setPageStartStack] = useState([]); // index 0 = page1 start (optional)
+
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [ordersError, setOrdersError] = useState(null);
 
@@ -67,45 +87,112 @@ const Profile = () => {
     }
   }, [snap.userProfile]);
 
-  // Real-time order listener
+  // Single auth listener (runs once)
   useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
+    const unsub = onAuthStateChanged(auth, (user) => {
       if (!user) {
-        setOrders([]);
+        setUid(null);
+
+        // reset paging
+        setOrdersPage(1);
+        setPageCursor(null);
+        setPageMode("init");
+        setPageStartStack([]);
+        setHasNextPage(false);
+        setNextCursor(null);
+
+        setPageOrders([]);
         setOrdersLoading(false);
+        setOrdersError(null);
         return;
       }
 
-      setOrdersLoading(true);
+      setUid(user.uid);
+
+      // reset paging on login
+      setOrdersPage(1);
+      setPageCursor(null);
+      setPageMode("init");
+      setPageStartStack([]);
+      setHasNextPage(false);
+      setNextCursor(null);
+
       setOrdersError(null);
-
-      // Listen to orders for this user, newest first
-      const q = query(
-        collection(db, "orders"),
-        where("userId", "==", user.uid),
-        orderBy("createdAt", "desc"),
-      );
-
-      const unsubOrders = onSnapshot(
-        q,
-        (snap) => {
-          const next = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-          setOrders(next);
-          setOrdersLoading(false);
-        },
-        (err) => {
-          console.error("Order listener error:", err);
-          setOrdersError("Failed to load orders.");
-          setOrdersLoading(false);
-        },
-      );
-
-      // cleanup the order listener when auth changes/unmounts
-      return () => unsubOrders();
+      setOrdersLoading(true);
     });
 
-    return () => unsubAuth();
+    return () => unsub();
   }, []);
+
+  // Orders listener for "current page only"
+  useEffect(() => {
+    if (!uid) return;
+
+    setOrdersLoading(true);
+    setOrdersError(null);
+
+    const base = query(
+      collection(db, "orders"),
+      where("userId", "==", uid),
+      orderBy("createdAt", "desc"),
+    );
+
+    // Fetch PAGE_SIZE + 1 so we can compute hasNextPage.
+    let q;
+    if (pageMode === "next" && pageCursor) {
+      q = query(base, startAfter(pageCursor), limit(PAGE_SIZE + 1));
+    } else if (pageMode === "goto" && pageCursor) {
+      // goto a known page start cursor (used for Prev)
+      q = query(base, startAt(pageCursor), limit(PAGE_SIZE + 1));
+    } else {
+      // init / page 1
+      q = query(base, limit(PAGE_SIZE + 1));
+    }
+
+    const unsubOrders = onSnapshot(
+      q,
+      (snap) => {
+        const docs = snap.docs; // DocumentSnapshot[]
+        const hasExtra = docs.length > PAGE_SIZE;
+
+        const visibleDocs = hasExtra ? docs.slice(0, PAGE_SIZE) : docs;
+
+        // compute hasNext based on extra doc
+        setHasNextPage(hasExtra);
+
+        // store the page's FIRST doc cursor in stack so Prev is reliable
+        const first = visibleDocs[0] ?? null;
+
+        setPageStartStack((prev) => {
+          // ensure we have an entry for this page (1-based)
+          const next = [...prev];
+          const idx = ordersPage - 1;
+
+          // only set if not already set and cursor exists
+          if (first && !next[idx]) next[idx] = first;
+
+          // if we're on page 1, keep stack trimmed to at least 1 element
+          return next;
+        });
+
+        // store last cursor for Next button
+        setNextCursor(visibleDocs[visibleDocs.length - 1] ?? null);
+
+        // map current page
+        const mapped = visibleDocs.map((d) => ({ id: d.id, ...d.data() }));
+        setPageOrders(mapped);
+
+        setOrdersLoading(false);
+      },
+      (err) => {
+        console.error("Paginated order listener error:", err);
+        setOrdersError("Failed to load orders.");
+        setOrdersLoading(false);
+      },
+    );
+
+    return () => unsubOrders();
+  }, [uid, pageMode, pageCursor, ordersPage]);
 
   useEffect(() => {
     if (Array.isArray(snap.savedDesigns) && snap.savedDesigns.length > 0) return;
@@ -124,12 +211,20 @@ const Profile = () => {
 
   // Transform Firestore orders into UI format
   const uiOrders = useMemo(() => {
-    return orders.map((o) => {
+    return pageOrders.map((o) => {
       const created =
-        o.createdAt?.toDate?.() ? o.createdAt.toDate() : o.createdAt ? new Date(o.createdAt) : null;
+        o.createdAt?.toDate?.()
+          ? o.createdAt.toDate()
+          : o.createdAt
+            ? new Date(o.createdAt)
+            : null;
 
       const date = created
-        ? created.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        ? created.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })
         : "—";
 
       const totalCents = o.stripe?.amountTotal ?? 0;
@@ -137,8 +232,7 @@ const Profile = () => {
 
       const status = o.status || "Processing";
 
-      const canCancel =
-        o.canCancel ?? (status === "Processing" || status === "Paid");
+      const canCancel = o.canCancel ?? (status === "Processing" || status === "Paid");
 
       return {
         id: o.id,
@@ -147,11 +241,11 @@ const Profile = () => {
         total,
         status,
         canCancel,
-        thumbnailUrl: o.thumbnailUrl || (o.cartItems?.[0]?.thumbnail),
+        thumbnailUrl: o.thumbnailUrl || o.cartItems?.[0]?.thumbnail,
         raw: o,
       };
     });
-  }, [orders]);
+  }, [pageOrders]);
 
   const profile = snap.userProfile || {};
   const displayName =
@@ -306,6 +400,15 @@ const Profile = () => {
               User Profile
             </h1>
             <div className="hidden items-center gap-3 md:flex">
+              {snap.userRole === "vendor" && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/vendor/dashboard")}
+                  className="rounded-full border-2 border-emerald-600 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-emerald-600 transition hover:bg-emerald-600 hover:text-white"
+                >
+                  Dashboard
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleBackToCustomizer}
@@ -430,6 +533,65 @@ const Profile = () => {
                 ))
               )}
             </div>
+            {!ordersLoading && !ordersError && (
+              <div className="mt-6 flex flex-col items-center justify-between gap-3 sm:flex-row">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Page <span className="text-slate-700">{ordersPage}</span>
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={ordersPage === 1}
+                    onClick={() => {
+                      if (ordersPage === 1) return;
+
+                      const prevPage = ordersPage - 1;
+
+                      // If going back to page 1, no cursor needed (init query)
+                      if (prevPage === 1) {
+                        setOrdersPage(1);
+                        setPageMode("init");
+                        setPageCursor(null);
+                        return;
+                      }
+
+                      // Use the stored cursor for the previous page start
+                      const prevCursor = pageStartStack[prevPage - 1];
+                      if (!prevCursor) {
+                        // fallback: go to page 1 if stack missing
+                        setOrdersPage(1);
+                        setPageMode("init");
+                        setPageCursor(null);
+                        return;
+                      }
+
+                      setOrdersPage(prevPage);
+                      setPageMode("goto");
+                      setPageCursor(prevCursor);
+                    }}
+                    className="rounded-full border-2 border-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Prev
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!hasNextPage || !nextCursor}
+                    onClick={() => {
+                      if (!hasNextPage || !nextCursor) return;
+
+                      setOrdersPage((p) => p + 1);
+                      setPageMode("next");
+                      setPageCursor(nextCursor);
+                    }}
+                    className="rounded-full border-2 border-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </section>
 

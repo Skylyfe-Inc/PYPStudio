@@ -1995,7 +1995,7 @@ const Customizer = () => {
               type="filled"
               title="Save Design"
               handleClick={handleOpenSaveModal}
-              customStyles="py-2 px-4 font-bold text-sm fixed bottom-5 right-5"
+              customStyles="py-2 px-4 font-bold text-sm fixed bottom-5 right-5 z-[9999] pointer-events-auto"
             />
           </div>
 

@@ -9,8 +9,13 @@ import {
   updateProfile,
   signOut,
 } from "firebase/auth";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import app from "../config/firebase";
 
 import { vendorSignupSchema, zodFieldErrors } from "../validation/authSchemas";
+import { ensureUserDoc } from "../lib/ensureUserDoc";
+
+const functions = getFunctions(app);
 
 const VendorSignUp = () => {
   const [companyName, setCompanyName] = useState("");
@@ -49,6 +54,26 @@ const VendorSignUp = () => {
     // 2) Optional: set displayName to companyName
     if (cleanCompanyName) {
       await updateProfile(user, { displayName: cleanCompanyName });
+    }
+
+    // 2.5) Set vendor role via Cloud Function (custom claims)
+    try {
+      const setVendorRole = httpsCallable(functions, "setVendorRole");
+      await setVendorRole();
+      console.log("✅ Vendor role set via custom claims");
+      
+      // Force refresh token so claims appear immediately
+      await user.getIdToken(true);
+    } catch (e) {
+      console.error("Failed to set vendor role:", e);
+      toastNotify("Account created, but role assignment failed. Contact support.", "error");
+    }
+
+    // 2.6) Ensure users collection document exists (for profile data)
+    try {
+      await ensureUserDoc(user, "vendor");
+    } catch (e) {
+      console.warn("Failed to create users doc:", e);
     }
 
     // 3) Call backend to store vendor fields in Firestore
