@@ -27,6 +27,16 @@ const Home = () => {
   const mode = import.meta.env.MODE || "development";
   const API_BASE_URL =
     config[mode]?.backendUrl || config.development.backendUrl;
+  
+  const isVendor = String(snap.userRole || "").trim().toLowerCase() === "vendor";
+  
+  // Debug: Log the user role
+  useEffect(() => {
+    console.log("[HOME] authUser=", snap.authUser?.uid || null);
+    console.log("[HOME] userRole=", snap.userRole);
+    console.log("[HOME] isVendor=", isVendor);
+  }, [snap.authUser, snap.userRole, isVendor]);
+  
   const handleNavigate = () => {
     state.intro = false;
   };
@@ -122,19 +132,30 @@ const Home = () => {
                 Create your own 1 of 1 exclusive shirt with our brand new AI
                 customization tool.
               </p>
-              <CustomButton
-                type="filled"
-                title="Customize Now"
-                handleClick={handleCustomizeNow}
-                customStyles="w-fit px-5 py-2.5 font-bold text-sm gap-4"
-              />
+              <div className="flex items-center gap-3">
+                <CustomButton
+                  type="filled"
+                  title="Customize Now"
+                  handleClick={handleCustomizeNow}
+                  customStyles="w-fit px-5 py-2.5 font-bold text-sm"
+                />
 
-              <CustomButton
-                type="outline"
-                title="Logout"
-                handleClick={handleLogout}
-                customStyles="w-fit px-5 py-2.5 mx-2 font-bold text-sm gap-4"
-              />
+                {isVendor && (
+                  <CustomButton
+                    type="filled"
+                    title="Dashboard"
+                    handleClick={() => navigate("/vendor/dashboard")}
+                    customStyles="!bg-emerald-600 hover:!bg-emerald-700 w-fit px-5 py-2.5 font-bold text-sm"
+                  />
+                )}
+
+                <CustomButton
+                  type="outline"
+                  title="Logout"
+                  handleClick={handleLogout}
+                  customStyles="w-fit px-5 py-2.5 font-bold text-sm"
+                />
+              </div>
             </motion.div>
           </motion.div>
         </motion.div>

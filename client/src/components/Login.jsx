@@ -6,6 +6,7 @@ import { setToken } from "../config/config/helpers";
 import { toastNotify } from "../components/Toast";
 import fingerprint from "../assets/assets/fingerprint.png";
 import state from "../store";
+import { fetchUserRole } from "../lib/fetchUserRole";
 
 const PROFILE_STORAGE_KEY = "pyp_user_profile";
 
@@ -27,6 +28,14 @@ export default function Login() {
       const user = userCredential.user;
 
       console.log("Firebase sign in successful:", user.uid);
+
+      // ✅ Update global auth state immediately
+      state.authUser = user;
+
+      // ✅ Fetch role from Firestore users/{uid}
+      const role = await fetchUserRole(user.uid);
+      state.userRole = role;
+      console.log("✅ User role set:", role);
 
       // Get the ID token
       const idToken = await user.getIdToken();
@@ -71,7 +80,7 @@ export default function Login() {
         displayName: user.displayName || user.email || cleanEmail,
         firstName: nameParts[0] || "",
         lastName: nameParts.slice(1).join(" "),
-        role: "unknown",
+        role, // ✅ set role from Firestore
       };
       const profile = { ...fallbackProfile, ...(data?.user?.profile || {}) };
       state.userProfile = profile;

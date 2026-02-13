@@ -38,6 +38,8 @@ const state = proxy({
   editDesignRef: null,
   selectedPrintProvider: null,
   selectedPrintifySelection: null,
+  authUser: null,
+  userRole: "customer", // default role
 });
 
 // Exporting the reactive state object

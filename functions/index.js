@@ -8,7 +8,7 @@
  */
 
 const {setGlobalOptions} = require("firebase-functions");
-const {onRequest} = require("firebase-functions/v2/https");
+const {onRequest, onCall} = require("firebase-functions/v2/https");
 const {defineSecret} = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const Stripe = require("stripe");
@@ -616,6 +616,56 @@ exports.createSlantCheckout = onRequest(
       });
     },
 );
+
+/**
+ * Cloud Function to set vendor role as a custom claim
+ * Called after vendor signup to grant vendor permissions
+ */
+exports.setVendorRole = onCall(async (request) => {
+  // Verify user is authenticated
+  if (!request.auth) {
+    throw new Error("Not authenticated");
+  }
+
+  const uid = request.auth.uid;
+
+  try {
+    // Set custom claim
+    await admin.auth().setCustomUserClaims(uid, { role: "vendor" });
+
+    console.log(`✅ Set vendor role for uid: ${uid}`);
+
+    return { success: true, message: "Vendor role set successfully" };
+  } catch (error) {
+    console.error("Error setting vendor role:", error);
+    throw new Error("Failed to set vendor role");
+  }
+});
+
+/**
+ * Cloud Function to set customer role as a custom claim
+ * Called after individual signup
+ */
+exports.setCustomerRole = onCall(async (request) => {
+  // Verify user is authenticated
+  if (!request.auth) {
+    throw new Error("Not authenticated");
+  }
+
+  const uid = request.auth.uid;
+
+  try {
+    // Set custom claim
+    await admin.auth().setCustomUserClaims(uid, { role: "customer" });
+
+    console.log(`✅ Set customer role for uid: ${uid}`);
+
+    return { success: true, message: "Customer role set successfully" };
+  } catch (error) {
+    console.error("Error setting customer role:", error);
+    throw new Error("Failed to set customer role");
+  }
+});
 
 // Create and deploy your first functions
 // https://firebase.google.com/docs/functions/get-started
