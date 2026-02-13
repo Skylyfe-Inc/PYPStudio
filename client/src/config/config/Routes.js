@@ -13,6 +13,8 @@ const AppRoutes = {
   WelcomeAiStudio: { path: "/WelcomeAiStudio" },
   IndividualSignUp: { path: "/IndividualSignUp" },
   LoginStudio: { path: "/LoginStudio" },
+  OrderConfirmation: { path: "/checkout/success" },
+  VendorDashboard: { path: "/vendor/dashboard" },
 };
 
 export default AppRoutes;

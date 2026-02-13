@@ -1,34 +1,32 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSnapshot } from "valtio";
 import previewShirt from "../assets/assets/logo-tshirt.png";
 import state from "../store";
 import { toastNotify } from "../components/Toast";
 import { auth } from "../config/firebase";
-import { signOut } from "firebase/auth";
+import { signOut, onAuthStateChanged } from "firebase/auth";
 import { removeToken } from "../config/config/helpers";
+import {
+  getFirestore,
+  collection,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  updateDoc,
+  doc,
+  serverTimestamp,
+  limit,
+  startAfter,
+  startAt,
+} from "firebase/firestore";
+import app from "../config/firebase";
 
 const PROFILE_STORAGE_KEY = "pyp_user_profile";
 const SAVED_DESIGNS_KEY = "pyp_saved_designs";
 
-const ordersSeed = [
-  {
-    id: "A1029",
-    label: "Order #A1029",
-    date: "Feb 16, 2024",
-    total: 44.99,
-    status: "Shipped",
-    canCancel: false,
-  },
-  {
-    id: "A0981",
-    label: "Order #A0981",
-    date: "Jan 12, 2024",
-    total: 59.49,
-    status: "Processing",
-    canCancel: true,
-  },
-];
+const db = getFirestore(app);
 
 const buildInitials = (displayName, profile = {}) => {
   const source = (displayName || profile.email || "").trim();
@@ -51,7 +49,27 @@ const Profile = () => {
   const navigate = useNavigate();
   const snap = useSnapshot(state);
 
-  const orders = useMemo(() => ordersSeed, []);
+  const PAGE_SIZE = 4;
+
+  const [uid, setUid] = useState(null);
+
+  const [pageOrders, setPageOrders] = useState([]); // only current page
+  const [ordersPage, setOrdersPage] = useState(1);
+
+  // pagination cursor + mode
+  const [pageCursor, setPageCursor] = useState(null); // DocumentSnapshot | null
+  const [pageMode, setPageMode] = useState("init");   // "init" | "next" | "goto"
+
+  // for UI buttons
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [nextCursor, setNextCursor] = useState(null); // DocumentSnapshot | null
+
+  // stack of page-start cursors (DocumentSnapshot for first doc of each page)
+  const [pageStartStack, setPageStartStack] = useState([]); // index 0 = page1 start (optional)
+
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [ordersError, setOrdersError] = useState(null);
+
   const designs = useMemo(
     () => (Array.isArray(snap.savedDesigns) ? snap.savedDesigns : []),
     [snap.savedDesigns],
@@ -69,6 +87,113 @@ const Profile = () => {
     }
   }, [snap.userProfile]);
 
+  // Single auth listener (runs once)
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        setUid(null);
+
+        // reset paging
+        setOrdersPage(1);
+        setPageCursor(null);
+        setPageMode("init");
+        setPageStartStack([]);
+        setHasNextPage(false);
+        setNextCursor(null);
+
+        setPageOrders([]);
+        setOrdersLoading(false);
+        setOrdersError(null);
+        return;
+      }
+
+      setUid(user.uid);
+
+      // reset paging on login
+      setOrdersPage(1);
+      setPageCursor(null);
+      setPageMode("init");
+      setPageStartStack([]);
+      setHasNextPage(false);
+      setNextCursor(null);
+
+      setOrdersError(null);
+      setOrdersLoading(true);
+    });
+
+    return () => unsub();
+  }, []);
+
+  // Orders listener for "current page only"
+  useEffect(() => {
+    if (!uid) return;
+
+    setOrdersLoading(true);
+    setOrdersError(null);
+
+    const base = query(
+      collection(db, "orders"),
+      where("userId", "==", uid),
+      orderBy("createdAt", "desc"),
+    );
+
+    // Fetch PAGE_SIZE + 1 so we can compute hasNextPage.
+    let q;
+    if (pageMode === "next" && pageCursor) {
+      q = query(base, startAfter(pageCursor), limit(PAGE_SIZE + 1));
+    } else if (pageMode === "goto" && pageCursor) {
+      // goto a known page start cursor (used for Prev)
+      q = query(base, startAt(pageCursor), limit(PAGE_SIZE + 1));
+    } else {
+      // init / page 1
+      q = query(base, limit(PAGE_SIZE + 1));
+    }
+
+    const unsubOrders = onSnapshot(
+      q,
+      (snap) => {
+        const docs = snap.docs; // DocumentSnapshot[]
+        const hasExtra = docs.length > PAGE_SIZE;
+
+        const visibleDocs = hasExtra ? docs.slice(0, PAGE_SIZE) : docs;
+
+        // compute hasNext based on extra doc
+        setHasNextPage(hasExtra);
+
+        // store the page's FIRST doc cursor in stack so Prev is reliable
+        const first = visibleDocs[0] ?? null;
+
+        setPageStartStack((prev) => {
+          // ensure we have an entry for this page (1-based)
+          const next = [...prev];
+          const idx = ordersPage - 1;
+
+          // only set if not already set and cursor exists
+          if (first && !next[idx]) next[idx] = first;
+
+          // if we're on page 1, keep stack trimmed to at least 1 element
+          return next;
+        });
+
+        // store last cursor for Next button
+        setNextCursor(visibleDocs[visibleDocs.length - 1] ?? null);
+
+        // map current page
+        const mapped = visibleDocs.map((d) => ({ id: d.id, ...d.data() }));
+        setPageOrders(mapped);
+
+        setOrdersLoading(false);
+      },
+      (err) => {
+        console.error("Paginated order listener error:", err);
+        setOrdersError("Failed to load orders.");
+        setOrdersLoading(false);
+      },
+    );
+
+    return () => unsubOrders();
+  }, [uid, pageMode, pageCursor, ordersPage]);
+
   useEffect(() => {
     if (Array.isArray(snap.savedDesigns) && snap.savedDesigns.length > 0) return;
     try {
@@ -83,6 +208,44 @@ const Profile = () => {
       console.warn("Unable to read stored designs", error);
     }
   }, [snap.savedDesigns]);
+
+  // Transform Firestore orders into UI format
+  const uiOrders = useMemo(() => {
+    return pageOrders.map((o) => {
+      const created =
+        o.createdAt?.toDate?.()
+          ? o.createdAt.toDate()
+          : o.createdAt
+            ? new Date(o.createdAt)
+            : null;
+
+      const date = created
+        ? created.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })
+        : "—";
+
+      const totalCents = o.stripe?.amountTotal ?? 0;
+      const total = totalCents / 100;
+
+      const status = o.status || "Processing";
+
+      const canCancel = o.canCancel ?? (status === "Processing" || status === "Paid");
+
+      return {
+        id: o.id,
+        label: `Order #${o.id.slice(0, 6).toUpperCase()}`,
+        date,
+        total,
+        status,
+        canCancel,
+        thumbnailUrl: o.thumbnailUrl || o.cartItems?.[0]?.thumbnail,
+        raw: o,
+      };
+    });
+  }, [pageOrders]);
 
   const profile = snap.userProfile || {};
   const displayName =
@@ -215,6 +378,19 @@ const Profile = () => {
     navigate("/");
   };
 
+  const handleCancelOrder = async (orderId) => {
+    try {
+      await updateDoc(doc(db, "orders", orderId), {
+        status: "Cancelled",
+        cancelledAt: serverTimestamp(),
+      });
+      toastNotify("Order cancelled.", "success");
+    } catch (e) {
+      console.error(e);
+      toastNotify("Failed to cancel order.", "error");
+    }
+  };
+
   return (
     <div className="h-screen overflow-y-auto bg-slate-100 px-4 py-10 sm:px-6 lg:px-10">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
@@ -224,6 +400,15 @@ const Profile = () => {
               User Profile
             </h1>
             <div className="hidden items-center gap-3 md:flex">
+              {snap.userRole === "vendor" && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/vendor/dashboard")}
+                  className="rounded-full border-2 border-emerald-600 px-5 py-2 text-sm font-semibold uppercase tracking-wide text-emerald-600 transition hover:bg-emerald-600 hover:text-white"
+                >
+                  Dashboard
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleBackToCustomizer}
@@ -300,40 +485,113 @@ const Profile = () => {
           <div className="rounded-3xl border-2 border-slate-900 bg-white p-6 shadow-lg lg:col-span-2">
             <SectionHeading icon="🕒" title="Order History" />
             <div className="mt-5 space-y-4">
-              {orders.map((order) => (
-                <div
-                  key={order.id}
-                  className="grid gap-4 rounded-2xl border border-slate-200 p-4 transition hover:border-slate-400 sm:grid-cols-[auto_1fr_auto]"
-                >
-                  <img
-                    src={previewShirt}
-                    alt=""
-                    className="h-16 w-16 rounded-xl border border-slate-200 object-cover"
-                  />
-                  <div>
-                    <p className="font-semibold text-slate-900">{order.label}</p>
-                    <div className="mt-1 text-xs text-slate-500 sm:text-sm">
-                      <div>{order.date}</div>
-                      <div>Sub-total: ${order.total.toFixed(2)}</div>
+              {ordersLoading ? (
+                <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
+                  Loading orders...
+                </p>
+              ) : ordersError ? (
+                <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-rose-600">
+                  {ordersError}
+                </p>
+              ) : uiOrders.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
+                  No orders yet.
+                </p>
+              ) : (
+                uiOrders.map((order) => (
+                  <div
+                    key={order.id}
+                    className="grid gap-4 rounded-2xl border border-slate-200 p-4 transition hover:border-slate-400 sm:grid-cols-[auto_1fr_auto]"
+                  >
+                    <img
+                      src={order.thumbnailUrl || previewShirt}
+                      alt=""
+                      className="h-16 w-16 rounded-xl border border-slate-200 object-cover"
+                    />
+                    <div>
+                      <p className="font-semibold text-slate-900">{order.label}</p>
+                      <div className="mt-1 text-xs text-slate-500 sm:text-sm">
+                        <div>{order.date}</div>
+                        <div>Sub-total: ${order.total.toFixed(2)}</div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end justify-between gap-2 sm:flex-row sm:items-center">
+                      <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                        {order.status}
+                      </span>
+                      <div className="flex gap-2">
+                        {order.canCancel && (
+                          <ProfileActionButton
+                            label="Cancel Item"
+                            tone="danger"
+                            onClick={() => handleCancelOrder(order.id)}
+                          />
+                        )}
+                      </div>
                     </div>
                   </div>
-                  <div className="flex flex-col items-end justify-between gap-2 sm:flex-row sm:items-center">
-                    <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                      {order.status}
-                    </span>
-                    <div className="flex gap-2">
-                      {order.canCancel && (
-                        <ProfileActionButton
-                          label="Cancel Item"
-                          tone="danger"
-                        />
-                      )}
-                      <ProfileActionButton label="Checkout" tone="primary" />
-                    </div>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
+            {!ordersLoading && !ordersError && (
+              <div className="mt-6 flex flex-col items-center justify-between gap-3 sm:flex-row">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Page <span className="text-slate-700">{ordersPage}</span>
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={ordersPage === 1}
+                    onClick={() => {
+                      if (ordersPage === 1) return;
+
+                      const prevPage = ordersPage - 1;
+
+                      // If going back to page 1, no cursor needed (init query)
+                      if (prevPage === 1) {
+                        setOrdersPage(1);
+                        setPageMode("init");
+                        setPageCursor(null);
+                        return;
+                      }
+
+                      // Use the stored cursor for the previous page start
+                      const prevCursor = pageStartStack[prevPage - 1];
+                      if (!prevCursor) {
+                        // fallback: go to page 1 if stack missing
+                        setOrdersPage(1);
+                        setPageMode("init");
+                        setPageCursor(null);
+                        return;
+                      }
+
+                      setOrdersPage(prevPage);
+                      setPageMode("goto");
+                      setPageCursor(prevCursor);
+                    }}
+                    className="rounded-full border-2 border-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Prev
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!hasNextPage || !nextCursor}
+                    onClick={() => {
+                      if (!hasNextPage || !nextCursor) return;
+
+                      setOrdersPage((p) => p + 1);
+                      setPageMode("next");
+                      setPageCursor(nextCursor);
+                    }}
+                    className="rounded-full border-2 border-slate-900 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-700 transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </section>
 

@@ -1,0 +1,121 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* ================================
+       Helpers
+    ================================= */
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(field) {
+      return signedIn() && resource.data[field] == request.auth.uid;
+    }
+
+    function isVendor() {
+      // Use custom claims instead of Firestore doc
+      return signedIn() && request.auth.token.role == "vendor";
+    }
+
+    /* ================================
+       USERS COLLECTION
+       Each user has their own document
+       Used for profile data, not role enforcement
+    ================================= */
+    match /users/{userId} {
+      // Allow user to CREATE their own document during signup
+      allow create: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow user to READ and UPDATE their own document
+      allow read, update: if request.auth != null && request.auth.uid == userId;
+      
+      // Nobody can delete users
+      allow delete: if false;
+    }
+
+    /* ================================
+       ORDERS (user order history)
+       Field used: userId
+    ================================= */
+    match /orders/{orderId} {
+
+      // Create order ONLY if userId matches auth user
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid;
+
+      // Read ONLY your own orders
+      allow read: if signedIn()
+        && resource.data.userId == request.auth.uid;
+
+      /*
+        Allow updates:
+        - Normal updates if user owns order
+        - One-time "claim" if order was created without userId
+          (needed for Stripe redirect timing)
+      */
+      allow update: if signedIn()
+        && (
+          // Already owned
+          resource.data.userId == request.auth.uid
+          ||
+          // First-time attach userId
+          (!("userId" in resource.data)
+            && request.resource.data.userId == request.auth.uid)
+        );
+
+      // Users should not delete orders
+      allow delete: if false;
+    }
+
+    /* ================================
+       STRIPE CUSTOMER DATA
+       (Required for Firebase Stripe Extension)
+    ================================= */
+    match /customers/{uid} {
+      allow read, write: if signedIn()
+        && request.auth.uid == uid;
+
+      match /checkout_sessions/{id} {
+        allow read, write: if signedIn()
+          && request.auth.uid == uid;
+      }
+
+      match /subscriptions/{id} {
+        allow read: if signedIn()
+          && request.auth.uid == uid;
+      }
+    }
+
+    /* ================================
+       STRIPE PRODUCTS / PRICES
+    ================================= */
+    match /products/{id} {
+      allow read: if signedIn();
+
+      match /prices/{priceId} {
+        allow read: if signedIn();
+      }
+
+      match /tax_rates/{taxId} {
+        allow read: if signedIn();
+      }
+    }
+
+    /* ================================
+       EMAIL (mail collection)
+       Cloud Functions ONLY
+    ================================= */
+    match /mail/{id} {
+      allow read, write: if false;
+    }
+
+    /* ================================
+       DEFAULT DENY
+    ================================= */
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

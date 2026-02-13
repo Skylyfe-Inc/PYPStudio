@@ -46,6 +46,9 @@ const firebase_admin = admin.initializeApp({
 // Firestore database reference
 const db = firebase_admin.firestore();
 
+// Firestore FieldValue helper
+const FieldValue = admin.firestore.FieldValue;
+
 // Verify Firebase ID token
 async function verifyToken(idToken) {
     try {
@@ -59,4 +62,4 @@ async function verifyToken(idToken) {
     }
 }
 
-export { firebase_admin, db, verifyToken };
+export { firebase_admin, db, verifyToken, FieldValue };

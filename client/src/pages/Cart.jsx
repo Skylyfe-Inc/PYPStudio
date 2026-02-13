@@ -2,11 +2,156 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSnapshot } from "valtio";
 import state from "../store";
+
 import logoPlaceholder from "../assets/assets/gotbLogo.png";
 import hoodiePlaceholder from "../assets/assets/3d-hoodie-icon.png";
 
+import { getCurrentUserOrThrow } from "../lib/stripePayments";
+
+import {
+  addDoc,
+  collection,
+  doc,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+} from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
+import app from "../config/firebase";
+
 const PRINTIFY_LOGO =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='80' viewBox='0 0 160 80'><rect width='160' height='80' rx='18' fill='%23111827'/><text x='50%25' y='50%25' fill='white' font-family='Arial, sans-serif' font-size='20' font-weight='700' text-anchor='middle' dominant-baseline='middle'>Printify</text></svg>";
+
+const db = getFirestore(app);
+
+/** Deep sanitization for Firestore - handles nested objects, proxies, etc. */
+const isPlainObject = (v) =>
+  v !== null && typeof v === "object" && (v.constructor === Object || Object.getPrototypeOf(v) === null);
+
+const toFirestoreSafe = (value, path = "root") => {
+  // remove undefined
+  if (value === undefined) return undefined;
+
+  // allow primitives + null
+  if (value === null) return null;
+  const t = typeof value;
+  if (t === "string" || t === "number" || t === "boolean") return value;
+
+  // allow Date (convert to ISO string)
+  if (value instanceof Date) return value.toISOString();
+
+  // arrays
+  if (Array.isArray(value)) {
+    const arr = value
+      .map((v, i) => toFirestoreSafe(v, `${path}[${i}]`))
+      .filter((v) => v !== undefined);
+    return arr;
+  }
+
+  // plain objects only
+  if (isPlainObject(value)) {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+      const cleaned = toFirestoreSafe(v, `${path}.${k}`);
+      if (cleaned !== undefined) out[k] = cleaned;
+    }
+    return out;
+  }
+
+  // everything else is invalid (Proxy, Map, Set, File, Blob, HTMLImageElement, etc.)
+  return String(value);
+};
+
+/**
+ * Only keep fields you actually need in Firestore.
+ * This avoids accidentally storing nested entities like decals/toggles/proxies.
+ * Returns a plain object with ONLY primitive values (strings/numbers).
+ */
+const pickOrderItem = (i) => {
+  // Explicitly build a plain object with only primitives - no sanitizer wrapper
+  const item = {
+    id: String(i.id || ""),
+    name: String(i.name || "Custom Design"),
+    price: Number(i.price) || 0,
+    quantity: Number(i.quantity) || 1,
+    model: String(i.model || "shirt"),
+  };
+
+  // Conditionally add string fields only if they exist and are strings
+  if (typeof i.thumbnail === "string" && i.thumbnail) item.thumbnail = i.thumbnail;
+  if (typeof i.placeholder === "string" && i.placeholder) item.placeholder = i.placeholder;
+  if (typeof i.imageURL === "string" && i.imageURL) item.imageURL = i.imageURL;
+  if (typeof i.colorHex === "string" && i.colorHex) item.colorHex = i.colorHex;
+  if (typeof i.colorLabel === "string" && i.colorLabel) item.colorLabel = i.colorLabel;
+  if (typeof i.designName === "string" && i.designName) item.designName = i.designName;
+  if (typeof i.designId === "string" && i.designId) item.designId = i.designId;
+  if (typeof i.designSignature === "string" && i.designSignature) item.designSignature = i.designSignature;
+  if (typeof i.stripePriceId === "string" && i.stripePriceId) item.stripePriceId = i.stripePriceId;
+
+  return item;
+};
+
+const normalizeName = (user) => {
+  let firstName = "";
+  let lastName = "";
+
+  if (user?.displayName) {
+    const parts = user.displayName.trim().split(/\s+/);
+    firstName = parts[0] || "";
+    lastName = parts.slice(1).join(" ") || "";
+  }
+
+  if (!firstName || !lastName) {
+    const fullName = window.prompt(
+      "Please enter your full name (First Last):",
+      user?.displayName || ""
+    );
+    if (!fullName || !fullName.trim()) return null;
+
+    const parts = fullName.trim().split(/\s+/);
+    firstName = parts[0] || "";
+    lastName = parts.slice(1).join(" ") || parts[0] || "";
+  }
+
+  return { firstName, lastName };
+};
+
+/**
+ * Waits for the Stripe extension to write back either `url` or `error`
+ * on the checkout_sessions/{docId} document.
+ */
+const waitForCheckoutUrl = (uid, sessionDocId) =>
+  new Promise((resolve, reject) => {
+    const ref = doc(db, "customers", uid, "checkout_sessions", sessionDocId);
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        const data = snap.data();
+        if (!data) return;
+
+        if (data.error) {
+          unsub();
+          reject(
+            new Error(
+              data.error?.message ||
+                data.error?.error?.message ||
+                "Stripe checkout session failed."
+            )
+          );
+          return;
+        }
+
+        if (data.url) {
+          unsub();
+          resolve(data.url);
+        }
+      },
+      (err) => {
+        unsub();
+        reject(err);
+      }
+    );
+  });
 
 const Cart = () => {
   const navigate = useNavigate();
@@ -16,17 +161,22 @@ const Cart = () => {
   const totals = useMemo(() => {
     const subtotal = cartItems.reduce((sum, item) => {
       const price = typeof item.price === "number" ? item.price : 44.99;
-      const quantity = Math.max(0, typeof item.quantity === "number" ? item.quantity : 1);
+      const quantity = Math.max(
+        0,
+        typeof item.quantity === "number" ? item.quantity : 1
+      );
       return sum + price * quantity;
     }, 0);
 
     const itemCount = cartItems.reduce(
-      (sum, item) => sum + Math.max(0, typeof item.quantity === "number" ? item.quantity : 1),
-      0,
+      (sum, item) =>
+        sum + Math.max(0, typeof item.quantity === "number" ? item.quantity : 1),
+      0
     );
 
     return { subtotal, itemCount };
   }, [cartItems]);
+
   const provider = snap.selectedPrintProvider || {};
   const providerName =
     provider.name || provider.title || provider.company || "Printify Provider";
@@ -36,7 +186,10 @@ const Cart = () => {
   const adjustQuantity = (id, delta) => {
     state.cartItems = (state.cartItems || []).map((entry) => {
       if (entry.id !== id) return entry;
-      const currentQty = Math.max(1, typeof entry.quantity === "number" ? entry.quantity : 1);
+      const currentQty = Math.max(
+        1,
+        typeof entry.quantity === "number" ? entry.quantity : 1
+      );
       const nextQty = Math.max(1, currentQty + delta);
       return { ...entry, quantity: nextQty };
     });
@@ -50,15 +203,123 @@ const Cart = () => {
     state.cartItems = [];
   };
 
-  const handleCheckout = () => {
-    if (!totals.itemCount) return;
-    alert("Checkout flow coming soon!");
+  const handleCheckout = async () => {
+    try {
+      if (!totals.itemCount) return;
+
+      // 1) Require login (Stripe extension ties sessions to customers/{uid})
+      const user = getCurrentUserOrThrow();
+
+      // 2) Get user's name (prompt if not available)
+      let firstName = "";
+      let lastName = "";
+      
+      // Try to parse displayName if available
+      if (user.displayName) {
+        const nameParts = user.displayName.trim().split(" ");
+        firstName = nameParts[0] || "";
+        lastName = nameParts.slice(1).join(" ") || "";
+      }
+      
+      // Prompt for name if not available
+      if (!firstName || !lastName) {
+        const fullName = window.prompt("Please enter your full name (First Last):", user.displayName || "");
+        if (!fullName || !fullName.trim()) {
+          alert("Name is required for checkout.");
+          return;
+        }
+        const nameParts = fullName.trim().split(" ");
+        firstName = nameParts[0] || "";
+        lastName = nameParts.slice(1).join(" ") || nameParts[0] || "";
+      }
+
+      const db = getFirestore(app);
+
+      const printifySelection = snap.selectedPrintifySelection || null;
+      const printProvider = snap.selectedPrintProvider || null;
+
+      // 3) Create pending order first
+      const orderRef = await addDoc(collection(db, "orders"), {
+        uid: user.uid,
+        email: user.email ?? null,
+        firstName,
+        lastName,
+        status: "pending",
+        createdAt: serverTimestamp(),
+        subtotal: totals.subtotal,
+        itemCount: totals.itemCount,
+        printifySelection,
+        printProvider,
+        items: cartItems.map((i) => ({
+          id: i.id,
+          name: i.name,
+          price: i.price,
+          quantity: i.quantity,
+          thumbnail: i.thumbnail || null,
+          colorHex: i.colorHex || null,
+          colorLabel: i.colorLabel || null,
+          designName: i.designName || i.name || "Custom Design",
+          designId: i.designId || null,
+        })),
+      });
+
+      // 4) Update customer document with name
+      const customerRef = doc(db, "customers", user.uid);
+      await setDoc(customerRef, {
+        email: user.email ?? null,
+        firstName,
+        lastName,
+      }, { merge: true });
+
+      // 5) Create checkout session
+      const priceId = cartItems?.[0]?.stripePriceId;
+      if (!priceId) throw new Error("Missing stripePriceId on cart item.");
+
+      const checkoutSessionsRef = collection(db, "customers", user.uid, "checkout_sessions");
+
+      const sessionRef = await addDoc(checkoutSessionsRef, {
+        price: priceId,
+        mode: "payment",
+        success_url: `${window.location.origin}/checkout/success?orderId=${orderRef.id}`,
+        cancel_url: `${window.location.origin}/cart`,
+        shipping_address_collection: { allowed_countries: ["US"] },
+        metadata: {
+          orderId: orderRef.id,
+          uid: user.uid,
+        },
+        allow_promotion_codes: true,
+      });
+
+      // 4) Listen for the extension to write back the Stripe checkout URL (or error)
+      const unsub = onSnapshot(doc(db, "customers", user.uid, "checkout_sessions", sessionRef.id), (snap) => {
+        const data = snap.data();
+        if (!data) return;
+
+        if (data.error) {
+          unsub();
+          throw new Error(data.error.message || "Stripe checkout session failed.");
+        }
+
+        if (data.url) {
+          unsub();
+          window.location.assign(data.url);
+        }
+      });
+    } catch (err) {
+      console.error("❌ Checkout failed - Full error:", err);
+      console.error("❌ Error name:", err?.name);
+      console.error("❌ Error message:", err?.message);
+      console.error("❌ Error code:", err?.code);
+      console.error("❌ Error stack:", err?.stack);
+      alert(err?.message || err?.code || "Checkout failed. Check console for details.");
+    }
   };
 
   const handleStartNewDesign = () => {
     state.intro = false;
     navigate("/home");
   };
+
   const handleSelectVendor = () => {
     navigate("/printify-catalog");
   };
@@ -120,15 +381,15 @@ const Cart = () => {
                 ))}
               </div>
 
-      <CartSummary
-        totals={totals}
-        onCheckout={handleCheckout}
-        onStartNewDesign={handleStartNewDesign}
-        providerName={providerName}
-        providerLogo={providerLogo}
-        providerUrl={providerUrl}
-        onSelectVendor={handleSelectVendor}
-      />
+              <CartSummary
+                totals={totals}
+                onCheckout={handleCheckout}
+                onStartNewDesign={handleStartNewDesign}
+                providerName={providerName}
+                providerLogo={providerLogo}
+                providerUrl={providerUrl}
+                onSelectVendor={handleSelectVendor}
+              />
             </div>
           )}
         </section>
@@ -141,11 +402,14 @@ const CartItem = ({ item, onDecrease, onIncrease, onRemove, onCustomize, showDiv
   const quantity = Math.max(1, typeof item.quantity === "number" ? item.quantity : 1);
   const priceEach = typeof item.price === "number" ? item.price : 44.99;
   const lineTotal = priceEach * quantity;
+
   const colorHex = typeof item.colorHex === "string" ? item.colorHex : "#3f3dfa";
   const colorLabel = item.colorLabel || colorHex;
+
   const designName = item.name || "Custom Design";
-  const thumbnail =
-    item.thumbnail || item.placeholder || hoodiePlaceholder;
+
+  // ✅ REVERTED: preserve original display logic
+  const thumbnail = item.thumbnail || item.placeholder || hoodiePlaceholder;
 
   return (
     <article
@@ -170,11 +434,13 @@ const CartItem = ({ item, onDecrease, onIncrease, onRemove, onCustomize, showDiv
               <span>{colorLabel}</span>
             </div>
           </div>
+
           <div className="flex items-center gap-3 text-sm font-semibold text-zinc-800">
             <QuantityButton label="-" onClick={onDecrease} disabled={quantity <= 1} />
             <span className="min-w-[2rem] text-center text-base">{quantity}</span>
             <QuantityButton label="+" onClick={onIncrease} />
           </div>
+
           <button
             type="button"
             onClick={onCustomize}
@@ -184,6 +450,7 @@ const CartItem = ({ item, onDecrease, onIncrease, onRemove, onCustomize, showDiv
           </button>
         </div>
       </div>
+
       <div className="flex flex-col items-end gap-3 text-right">
         <p className="text-xl font-bold text-zinc-900">${lineTotal.toFixed(2)}</p>
         <button
@@ -252,8 +519,12 @@ const CartSummary = ({
         <p className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
           Sub-total
         </p>
-        <p className="text-xs text-zinc-400">{totals.itemCount} item{totals.itemCount === 1 ? "" : "s"}</p>
-        <p className="text-3xl font-black text-zinc-900">${totals.subtotal.toFixed(2)}</p>
+        <p className="text-xs text-zinc-400">
+          {totals.itemCount} item{totals.itemCount === 1 ? "" : "s"}
+        </p>
+        <p className="text-3xl font-black text-zinc-900">
+          ${totals.subtotal.toFixed(2)}
+        </p>
       </div>
       <button
         type="button"

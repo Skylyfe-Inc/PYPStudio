@@ -9,8 +9,13 @@ import {
   updateProfile,
   signOut,
 } from "firebase/auth";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import app from "../config/firebase";
 
 import { individualSignupSchema, zodFieldErrors } from "../validation/authSchemas";
+import { ensureUserDoc } from "../lib/ensureUserDoc";
+
+const functions = getFunctions(app);
 
 const IndividualSignUp = () => {
   const [firstName, setFirstName] = useState("");
@@ -43,6 +48,26 @@ const IndividualSignUp = () => {
     // 2) Update displayName in Firebase Auth profile (optional but nice)
     if (displayName) {
       await updateProfile(user, { displayName });
+    }
+
+    // 2.5) Set customer role via Cloud Function (custom claims)
+    try {
+      const setCustomerRole = httpsCallable(functions, "setCustomerRole");
+      await setCustomerRole();
+      console.log("✅ Customer role set via custom claims");
+      
+      // Force refresh token so claims appear immediately
+      await user.getIdToken(true);
+    } catch (e) {
+      console.error("Failed to set customer role:", e);
+      // Not critical - customer is default
+    }
+
+    // 2.6) Ensure users collection document exists (for profile data)
+    try {
+      await ensureUserDoc(user, "customer");
+    } catch (e) {
+      console.warn("Failed to create users doc:", e);
     }
 
     // 3) Call backend to write Firestore fields (firstName/lastName/email/etc)
